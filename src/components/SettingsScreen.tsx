@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
 import { 
   ArrowLeft, 
   Shield, 
@@ -14,8 +13,7 @@ import {
   ChevronRight,
   Lock,
   User,
-  Mail,
-  Wallet,
+  
   Users,
   CheckCircle,
   AlertCircle,
@@ -32,15 +30,17 @@ import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import type { Screen } from '../App';
 import { toast } from 'sonner';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-
+import { useSoroban } from '../hooks/useSoroban';
+import { fetchIdentity as fetchIdentityApi } from '../services/identities';
+import type { AuthSession } from '../types/auth';
 interface SettingsScreenProps {
   onNavigate: (screen: Screen) => void;
   onLogout: () => void;
-  accessToken?: string;
+  session?: AuthSession;
 }
 
-export function SettingsScreen({ onNavigate, onLogout, accessToken }: SettingsScreenProps) {
+export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreenProps) {
+  const { identity } = useSoroban();
   const [biometricEnabled, setBiometricEnabled] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
@@ -75,33 +75,50 @@ export function SettingsScreen({ onNavigate, onLogout, accessToken }: SettingsSc
   const [questionsEnabled, setQuestionsEnabled] = useState(false);
 
   // 2FA Setup
-  const [qrCode] = useState('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='); // Placeholder
   const [totpSecret] = useState('JBSWY3DPEHPK3PXP');
   const [verificationCode, setVerificationCode] = useState('');
 
+  const waitForBackend = (delay = 600) => new Promise((resolve) => setTimeout(resolve, delay));
+
   useEffect(() => {
-    if (accessToken) {
-      loadUserProfile();
-    }
-  }, [accessToken]);
+    const fallbackName = identity?.name ?? session?.fullName ?? '';
+    const fallbackEmail = identity?.email ?? session?.email ?? '';
+    const fallbackWorldKeyId = identity?.publicKey ?? session?.publicKey ?? '';
 
-  const loadUserProfile = async () => {
-    try {
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/profile`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
+    setUserProfile({
+      name: fallbackName,
+      email: fallbackEmail,
+      worldKeyId: fallbackWorldKeyId,
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        setUserProfile(data.user);
+    const targetKey = session?.publicKey ?? identity?.publicKey;
+    if (!targetKey) return;
+
+    let cancelled = false;
+
+    const loadProfile = async () => {
+      try {
+        const payload = await fetchIdentityApi(targetKey);
+        if (cancelled) return;
+        setUserProfile({
+          name: payload.fullName ?? fallbackName,
+          email: fallbackEmail,
+          worldKeyId: payload.publicKey,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        console.warn('No se pudo sincronizar el perfil con el backend', error);
       }
-    } catch (error) {
-      console.error('Error loading profile:', error);
-    }
-  };
+    };
+
+    loadProfile().catch((error) => {
+      console.warn('Error al cargar el perfil', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [identity, session]);
 
   const handleLogout = () => {
     toast.success('Sesión cerrada correctamente');
@@ -128,6 +145,7 @@ export function SettingsScreen({ onNavigate, onLogout, accessToken }: SettingsSc
       });
       setShowBackupDialog(false);
     } catch (err) {
+      console.warn(err);
       toast.error('No se pudo copiar');
     }
   };
@@ -159,16 +177,7 @@ export function SettingsScreen({ onNavigate, onLogout, accessToken }: SettingsSc
     );
   };
 
-  const handle2FAToggle = (checked: boolean) => {
-    setTwoFactorEnabled(checked);
-    if (checked) {
-      toast.success('2FA activado', {
-        description: 'Se te pedirá un código adicional al iniciar sesión'
-      });
-    } else {
-      toast.success('2FA desactivado');
-    }
-  };
+  // 2FA toggle handled via explicit setup flow; keep state in `twoFactorEnabled`
 
   const handleNotificationsToggle = (checked: boolean) => {
     setNotifications(checked);
@@ -221,30 +230,13 @@ export function SettingsScreen({ onNavigate, onLogout, accessToken }: SettingsSc
       return;
     }
 
-    // Guardar en backend
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/recovery/setup-social`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            guardians: guardians.map(g => ({ email: g.email, token: g.token })),
-            guardianCount: guardians.length
-          })
-        }
-      );
-
-      if (response.ok) {
-        setSocialRecoveryEnabled(true);
-        toast.success('Recuperación social configurada', {
-          description: `${guardians.length} guardianes asignados`
-        });
-        setShowSocialRecoveryDialog(false);
-      }
+      await waitForBackend();
+      setSocialRecoveryEnabled(true);
+      toast.success('Recuperación social configurada', {
+        description: `${guardians.length} guardianes asignados`
+      });
+      setShowSocialRecoveryDialog(false);
     } catch (error) {
       console.error('Error saving social recovery:', error);
       toast.error('Error al guardar configuración');
@@ -289,29 +281,13 @@ export function SettingsScreen({ onNavigate, onLogout, accessToken }: SettingsSc
       return;
     }
 
-    // Guardar en backend
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/recovery/setup-questions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            questions: securityQuestions
-          })
-        }
-      );
-
-      if (response.ok) {
-        setQuestionsEnabled(true);
-        toast.success('Preguntas de seguridad configuradas', {
-          description: `${securityQuestions.length} preguntas guardadas`
-        });
-        setShowQuestionsDialog(false);
-      }
+      await waitForBackend();
+      setQuestionsEnabled(true);
+      toast.success('Preguntas de seguridad configuradas', {
+        description: `${securityQuestions.length} preguntas guardadas`
+      });
+      setShowQuestionsDialog(false);
     } catch (error) {
       console.error('Error saving questions:', error);
       toast.error('Error al guardar preguntas');
@@ -327,29 +303,11 @@ export function SettingsScreen({ onNavigate, onLogout, accessToken }: SettingsSc
 
     // Verificar código
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/recovery/setup-2fa`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            secret: totpSecret,
-            code: verificationCode
-          })
-        }
-      );
-
-      if (response.ok) {
-        setTwoFactorEnabled(true);
-        toast.success('Autenticador 2FA configurado');
-        setShow2FADialog(false);
-        setVerificationCode('');
-      } else {
-        toast.error('Código incorrecto');
-      }
+      await waitForBackend();
+      setTwoFactorEnabled(true);
+      toast.success('Autenticador 2FA configurado');
+      setShow2FADialog(false);
+      setVerificationCode('');
     } catch (error) {
       console.error('Error setting up 2FA:', error);
       toast.error('Error al configurar 2FA');

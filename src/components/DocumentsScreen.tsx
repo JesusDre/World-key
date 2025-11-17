@@ -1,268 +1,201 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { 
-  ArrowLeft, 
-  FileText, 
-  Shield, 
-  CheckCircle, 
-  Clock, 
-  Share2, 
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import {
+  ArrowLeft,
+  CheckCircle,
   Download,
   Eye,
-  Plus,
-  XCircle,
-  Link as LinkIcon,
-  Upload,
   ExternalLink,
-  Loader2
-} from 'lucide-react';
-import { Button } from './ui/button';
-import { Card } from './ui/card';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import type { Screen } from '../App';
-import { toast } from 'sonner';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+  FileText,
+  Link as LinkIcon,
+  Loader2,
+  Plus,
+  Shield,
+  Share2,
+} from "lucide-react";
+import { toast } from "sonner";
+import type { Screen } from "../App";
+import { useSoroban } from "@/hooks/useSoroban";
+import type { DocumentRecord, PermissionRecord } from "@/utils/stellar";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 interface DocumentsScreenProps {
   onNavigate: (screen: Screen) => void;
-  accessToken?: string;
 }
 
-interface Document {
-  id: string;
-  userId: string;
-  type: string;
-  number: string;
-  issueDate: string;
-  expiryDate?: string;
-  verified: boolean;
-  tokenHash: string;
-  blockchainTxHash?: string;
-  blockchainVerified?: boolean;
-  createdAt: string;
-  activeShares?: number;
+interface ShareEntry {
+  docId: number;
+  target: string;
+  grantedAt: string;
 }
 
-export function DocumentsScreen({ onNavigate, accessToken }: DocumentsScreenProps) {
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
-  const [showShareDialog, setShowShareDialog] = useState(false);
+const DOCUMENT_TYPES = [
+  { value: "INE", label: "INE - Identificación Nacional" },
+  { value: "Pasaporte", label: "Pasaporte" },
+  { value: "RFC", label: "RFC - Registro Federal" },
+  { value: "CURP", label: "CURP" },
+  { value: "Licencia", label: "Licencia de Conducir" },
+  { value: "Certificado", label: "Certificado Profesional" },
+];
+
+export function DocumentsScreen({ onNavigate }: DocumentsScreenProps) {
+  const {
+    identity,
+    documents,
+    grantedPermissions,
+    createDocument,
+    shareDocument,
+    revokePermission,
+    refresh,
+  } = useSoroban();
+
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Form states
-  const [docType, setDocType] = useState('');
-  const [docNumber, setDocNumber] = useState('');
-  const [issueDate, setIssueDate] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
+  const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
+  const [docType, setDocType] = useState("");
+  const [docNumber, setDocNumber] = useState("");
+  const [issueDate, setIssueDate] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [shareTarget, setShareTarget] = useState("");
+  const [isSharing, setIsSharing] = useState(false);
 
   useEffect(() => {
-    if (accessToken) {
-      loadDocuments();
-    }
-  }, [accessToken]);
-
-  const loadDocuments = async () => {
-    try {
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/documents`;
-      console.log('🔍 Cargando documentos...');
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+    if (identity) {
+      refresh().catch((error: unknown) => {
+        const err = error as Error;
+        console.warn("No se pudieron refrescar los documentos", err);
       });
-
-      console.log('📡 Response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Documentos cargados:', data.documents?.length || 0);
-        console.log('📄 Documentos:', data.documents);
-        setDocuments(data.documents || []);
-      } else {
-        const errorText = await response.text();
-        console.error('❌ Error al cargar documentos:', errorText);
-        toast.error('Error al cargar documentos');
-      }
-    } catch (error) {
-      console.error('❌ Error loading documents:', error);
-      toast.error('Error de conexión al cargar documentos');
     }
-  };
+  }, [identity, refresh]);
+
+  const sharesByDoc = useMemo(() => {
+    const grouped = new Map<number, ShareEntry[]>();
+    grantedPermissions.forEach((permission: PermissionRecord) => {
+      const collection = grouped.get(permission.docId) ?? [];
+      const existing = collection.find((entry) => entry.target === permission.target);
+      if (existing) {
+        existing.grantedAt = permission.grantedAt ?? existing.grantedAt;
+      } else {
+        collection.push({
+          docId: permission.docId,
+          target: permission.target,
+          grantedAt: permission.grantedAt ?? new Date().toISOString(),
+        });
+      }
+      grouped.set(permission.docId, collection);
+    });
+    return grouped;
+  }, [grantedPermissions]);
+
+  const activeShares = (doc: DocumentRecord) => sharesByDoc.get(doc.docId)?.length ?? 0;
 
   const handleAddDocument = async () => {
-    if (!docType || !docNumber || !issueDate) {
-      toast.error('Por favor completa todos los campos requeridos');
+    if (!identity) {
+      toast.error("Conecta tu wallet primero");
       return;
     }
 
-    setIsLoading(true);
-    console.log('📝 Iniciando creación de documento...');
+    if (!docType || !docNumber || !issueDate) {
+      toast.error("Completa tipo, número y fecha de emisión");
+      return;
+    }
+
+    setIsSubmitting(true);
+    toast.loading("Registrando documento…", { id: "mint-doc" });
 
     try {
-      // 1. Crear documento en backend
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/documents`;
-      console.log('📤 Enviando documento:', { type: docType, number: docNumber, issueDate, expiryDate });
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          type: docType,
-          number: docNumber,
-          issueDate,
-          expiryDate: expiryDate || null,
-          verified: false
-        })
+      const record = await createDocument({
+        type: docType,
+        number: docNumber,
+        issueDate,
+        expiryDate: expiryDate || null,
       });
-
-      console.log('📡 Response status:', response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Error response:', errorData);
-        throw new Error(errorData.error || 'Error al crear documento');
-      }
-
-      const data = await response.json();
-      console.log('✅ Documento creado:', data.document);
-      
-      // Mostrar que se está registrando en blockchain
-      toast.loading('🔐 Registrando en blockchain...', {
-        id: 'blockchain-registration',
-        description: 'Confirmando transacción en la red',
+      toast.success("Documento registrado", {
+        id: "mint-doc",
+        description: `Hash: ${shorten(record.hash)}`,
       });
-
-      // 2. Registrar en blockchain
-      console.log('⛓️ Iniciando verificación en blockchain...');
-      const txHash = await registerInBlockchain(data.document);
-      console.log('✅ Blockchain TX Hash:', txHash);
-
-      // Dismiss loading toast
-      toast.dismiss('blockchain-registration');
-
-      toast.success('✅ ¡Documento verificado en Blockchain!', {
-        description: `TX: ${txHash.substring(0, 20)}...`
-      });
-
-      // Limpiar form
-      setDocType('');
-      setDocNumber('');
-      setIssueDate('');
-      setExpiryDate('');
       setShowAddDialog(false);
-
-      // Recargar documentos
-      console.log('🔄 Recargando lista de documentos...');
-      await loadDocuments();
-    } catch (error: any) {
-      console.error('❌ Error adding document:', error);
-      toast.dismiss('blockchain-registration');
-      toast.error('Error al agregar documento', {
-        description: error.message
+      setDocType("");
+      setDocNumber("");
+      setIssueDate("");
+      setExpiryDate("");
+      await refresh();
+    } catch (error: unknown) {
+      const err = error as Error;
+      toast.error("No se pudo registrar el documento", {
+        id: "mint-doc",
+        description: err.message ?? "Intenta de nuevo",
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const registerInBlockchain = async (document: Document): Promise<string> => {
-    // Simular delay de blockchain (en producción sería la confirmación real)
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
+  const handleShareSubmit = async () => {
+    if (!selectedDoc) return;
+    const target = shareTarget.trim();
+    if (!target) {
+      toast.error("Ingresa la dirección pública que deseas autorizar");
+      return;
+    }
+
+    setIsSharing(true);
     try {
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/documents/${document.id}/verify-blockchain`;
-      console.log('⛓️ Registrando en blockchain:', url);
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+      await shareDocument(selectedDoc.docId, target);
+      toast.success("Acceso aprobado", {
+        description: `La dirección ${shorten(target)} ahora puede consultar este documento`,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Error en blockchain:', errorData);
-        throw new Error('Error al verificar en blockchain');
-      }
-
-      const data = await response.json();
-      console.log('✅ Documento verificado en blockchain:', data);
-      
-      return data.txHash;
-    } catch (error) {
-      console.error('❌ Error registering in blockchain:', error);
-      throw error;
+      setShareTarget("");
+    } catch (error: unknown) {
+      const err = error as Error;
+      toast.error("No se pudo compartir el documento", {
+        description: err.message ?? "Intenta nuevamente",
+      });
+    } finally {
+      setIsSharing(false);
     }
   };
 
-  const getStatusColor = (verified: boolean, blockchainVerified?: boolean) => {
-    if (blockchainVerified) {
-      return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
-    } else if (verified) {
-      return 'text-blue-400 bg-blue-500/10 border-blue-500/30';
-    } else {
-      return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
+  const handleRevokeShare = async (entry: ShareEntry) => {
+    try {
+      await revokePermission(entry.docId, entry.target);
+      toast.success("Acceso revocado correctamente");
+    } catch (error: unknown) {
+      const err = error as Error;
+      toast.error("No se pudo revocar el acceso", {
+        description: err.message ?? "Intenta nuevamente",
+      });
     }
-  };
-
-  const getStatusIcon = (verified: boolean, blockchainVerified?: boolean) => {
-    if (blockchainVerified) {
-      return <CheckCircle className="w-4 h-4" />;
-    } else if (verified) {
-      return <Clock className="w-4 h-4" />;
-    } else {
-      return <Clock className="w-4 h-4" />;
-    }
-  };
-
-  const getStatusText = (verified: boolean, blockchainVerified?: boolean) => {
-    if (blockchainVerified) {
-      return 'Verificado en Blockchain';
-    } else if (verified) {
-      return 'En proceso';
-    } else {
-      return 'Pendiente';
-    }
-  };
-
-  const handleShare = () => {
-    toast.success('Solicitud enviada', {
-      description: 'El destinatario recibirá una notificación para aceptar el acceso'
-    });
-    setShowShareDialog(false);
-  };
-
-  const handleRevoke = (docId: string) => {
-    toast.success('Acceso revocado', {
-      description: 'Los permisos han sido eliminados inmediatamente'
-    });
   };
 
   const openBlockchainExplorer = (hash: string) => {
-    // En producción abriría https://etherscan.io/tx/${hash} o similar
-    toast.info('Explorador de Blockchain', {
-      description: `Hash: ${hash}`
-    });
+    const explorerUrl = `https://horizon-futurenet.stellar.org/transactions/${hash}`;
+    window.open(explorerUrl, "_blank", "noopener,noreferrer");
   };
+
+  const documentsList = useMemo(
+    () =>
+      [...documents].sort(
+        (a, b) =>
+          new Date(b.metadata.createdAt).getTime() - new Date(a.metadata.createdAt).getTime(),
+      ),
+    [documents],
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-8">
-      {/* Header */}
       <div className="bg-gradient-to-br from-purple-900/40 to-slate-900/40 px-6 pt-12 pb-8 border-b border-slate-800">
         <div className="flex items-center gap-4 mb-8">
           <button
-            onClick={() => onNavigate('dashboard')}
+            onClick={() => onNavigate("dashboard")}
             className="p-2 hover:bg-slate-800 rounded-full transition-colors"
           >
             <ArrowLeft className="w-6 h-6" />
@@ -273,41 +206,34 @@ export function DocumentsScreen({ onNavigate, accessToken }: DocumentsScreenProp
         <div className="flex items-center gap-3 p-4 bg-blue-500/10 rounded-xl border border-blue-500/30">
           <Shield className="w-6 h-6 text-blue-400 flex-shrink-0" />
           <div>
-            <p className="text-sm text-white">Documentos Tokenizados en Blockchain</p>
+            <p className="text-sm text-white">Documentos tokenizados en Soroban</p>
             <p className="text-xs text-slate-400">
-              Cada documento es un token protegido con hash inmutable. Tú controlas quién tiene acceso.
+              Cada registro genera un hash inmutable. Los permisos se controlan desde los contratos de WorldKey.
             </p>
           </div>
         </div>
       </div>
 
       <div className="px-6 py-6">
-        {/* Add Document Button */}
-        <Button 
-          onClick={() => setShowAddDialog(true)}
-          className="w-full mb-6 bg-purple-500 hover:bg-purple-600 h-12 gap-2 text-white"
-        >
+        <Button onClick={() => setShowAddDialog(true)} className="w-full mb-6 bg-purple-500 hover:bg-purple-600 h-12 gap-2">
           <Plus className="w-5 h-5" />
           Añadir Documento
         </Button>
 
-        {/* Documents List */}
-        {documents.length === 0 ? (
+        {documentsList.length === 0 ? (
           <Card className="p-8 bg-slate-900 border-slate-800 text-center">
             <FileText className="w-16 h-16 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-400 mb-2">No tienes documentos registrados</p>
-            <p className="text-sm text-slate-500">
-              Agrega tu primer documento para tokenizarlo en blockchain
-            </p>
+            <p className="text-sm text-slate-500">Agrega tu primer documento para tokenizarlo en Soroban.</p>
           </Card>
         ) : (
           <div className="space-y-4">
-            {documents.map((doc, index) => (
+            {documentsList.map((doc: DocumentRecord, index: number) => (
               <motion.div
-                key={doc.id}
+                key={doc.hash}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
+                transition={{ delay: index * 0.05 }}
               >
                 <Card className="p-4 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
                   <div className="flex items-start gap-4">
@@ -318,12 +244,14 @@ export function DocumentsScreen({ onNavigate, accessToken }: DocumentsScreenProp
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm text-white truncate">{doc.type}</h3>
-                          <p className="text-xs text-slate-400">No. {doc.number}</p>
+                          <h3 className="text-sm text-white truncate">{doc.metadata.type}</h3>
+                          <p className="text-xs text-slate-400">No. {doc.metadata.number}</p>
                         </div>
-                        <Badge className={`${getStatusColor(doc.verified, doc.blockchainVerified)} flex items-center gap-1`}>
-                          {getStatusIcon(doc.verified, doc.blockchainVerified)}
-                          {getStatusText(doc.verified, doc.blockchainVerified)}
+                        <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                          <span className="flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            On-chain
+                          </span>
                         </Badge>
                       </div>
 
@@ -331,37 +259,44 @@ export function DocumentsScreen({ onNavigate, accessToken }: DocumentsScreenProp
                         <div className="flex items-center gap-2 text-xs">
                           <LinkIcon className="w-3 h-3 text-slate-400" />
                           <span className="text-slate-400">Hash:</span>
-                          <button 
-                            onClick={() => openBlockchainExplorer(doc.tokenHash)}
+                          <button
+                            onClick={() => navigator.clipboard.writeText(doc.hash)}
                             className="font-mono text-slate-400 hover:text-blue-400 transition-colors truncate"
                           >
-                            {doc.tokenHash}
+                            {doc.hash}
                           </button>
                         </div>
-                        {doc.blockchainVerified && doc.blockchainTxHash && (
+                        {doc.lastTx && (
                           <div className="flex items-center gap-2 text-xs bg-emerald-500/10 px-2 py-1.5 rounded border border-emerald-500/30">
                             <CheckCircle className="w-3 h-3 text-emerald-400" />
-                            <span className="text-emerald-400">Blockchain TX:</span>
-                            <button 
-                              onClick={() => openBlockchainExplorer(doc.blockchainTxHash!)}
-                              className="font-mono text-emerald-400 hover:text-emerald-300 transition-colors flex-1 text-left truncate"
+                            <span className="text-emerald-400">Tx:</span>
+                            <button
+                              onClick={() => openBlockchainExplorer(doc.lastTx!)}
+                              className="font-mono text-emerald-400 hover:text-emerald-300 transition-colors flex-1 truncate text-left"
                             >
-                              {doc.blockchainTxHash.substring(0, 20)}...
+                              {doc.lastTx}
                             </button>
                             <ExternalLink className="w-3 h-3 text-emerald-400" />
                           </div>
                         )}
                       </div>
 
-                      <div className="text-xs text-slate-500 mb-3">
-                        Emitido: {new Date(doc.issueDate).toLocaleDateString('es-MX')}
-                        {doc.expiryDate && ` • Vence: ${new Date(doc.expiryDate).toLocaleDateString('es-MX')}`}
+                      <div className="flex gap-2 text-xs text-slate-400 mb-3">
+                        <span>
+                          Emitido: {doc.metadata.issueDate ? new Date(doc.metadata.issueDate).toLocaleDateString("es-MX") : "-"}
+                        </span>
+                        {doc.metadata.expiryDate && (
+                          <>
+                            <span>|</span>
+                            <span>Vence: {new Date(doc.metadata.expiryDate).toLocaleDateString("es-MX")}</span>
+                          </>
+                        )}
                       </div>
 
-                      {doc.activeShares && doc.activeShares > 0 && (
+                      {activeShares(doc) > 0 && (
                         <div className="flex items-center gap-2 text-xs text-orange-400 mb-3 p-2 bg-orange-500/10 rounded-lg">
                           <Eye className="w-4 h-4" />
-                          <span>{doc.activeShares} acceso(s) activo(s)</span>
+                          <span>{activeShares(doc)} acceso(s) activo(s)</span>
                         </div>
                       )}
 
@@ -383,7 +318,8 @@ export function DocumentsScreen({ onNavigate, accessToken }: DocumentsScreenProp
                             setShowDetailDialog(true);
                           }}
                           size="sm"
-                          className="bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-600"
+                          variant="outline"
+                          className="border-slate-600 text-slate-300 hover:bg-slate-800"
                         >
                           <Eye className="w-4 h-4 mr-2" />
                           Ver
@@ -396,104 +332,86 @@ export function DocumentsScreen({ onNavigate, accessToken }: DocumentsScreenProp
             ))}
           </div>
         )}
-
-        {/* Security Notice */}
-        <Card className="mt-6 p-4 bg-purple-900/20 border-purple-500/30">
-          <div className="flex gap-3">
-            <Shield className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-white mb-1">Nivel de Privacidad Alto con Blockchain</p>
-              <p className="text-xs text-slate-400">
-                Cada documento está protegido con hash criptográfico registrado en blockchain.
-                No compartas documentos sin revisar la solicitud. Puedes revocar el acceso
-                en cualquier momento.
-              </p>
-            </div>
-          </div>
-        </Card>
       </div>
 
-      {/* Add Document Dialog */}
+      <Card className="mx-6 mt-4 mb-10 p-4 bg-purple-900/20 border-purple-500/30">
+        <div className="flex gap-3">
+          <Shield className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-white mb-1">Privacidad respaldada por contratos Soroban</p>
+            <p className="text-xs text-slate-400">
+              Autoriza o revoca accesos desde esta pantalla. Las decisiones quedan registradas en Futurenet.
+            </p>
+          </div>
+        </div>
+      </Card>
+
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
-            <DialogTitle className="text-white">Agregar Documento</DialogTitle>
+            <DialogTitle>Agregar documento</DialogTitle>
             <DialogDescription className="text-slate-400">
-              El documento será tokenizado y registrado en blockchain
+              Se generará un hash con tus datos y se enviará una transacción a la red Futurenet.
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4 mt-4">
             <div>
-              <Label className="text-white mb-2 block">Tipo de Documento</Label>
+              <Label className="text-white mb-2 block">Tipo</Label>
               <Select value={docType} onValueChange={setDocType}>
                 <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                   <SelectValue placeholder="Selecciona tipo" />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                  <SelectItem value="INE" className="text-white">INE - Identificación Nacional</SelectItem>
-                  <SelectItem value="Pasaporte" className="text-white">Pasaporte</SelectItem>
-                  <SelectItem value="RFC" className="text-white">RFC - Registro Federal</SelectItem>
-                  <SelectItem value="CURP" className="text-white">CURP</SelectItem>
-                  <SelectItem value="Licencia" className="text-white">Licencia de Conducir</SelectItem>
-                  <SelectItem value="Certificado" className="text-white">Certificado Profesional</SelectItem>
+                  {DOCUMENT_TYPES.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label className="text-white mb-2 block">Número de Documento</Label>
+              <Label className="text-white mb-2 block">Número</Label>
               <Input
                 value={docNumber}
-                onChange={(e) => setDocNumber(e.target.value)}
+                onChange={(event) => setDocNumber(event.target.value)}
                 placeholder="Ej: ABCD123456HEFGHI00"
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
 
             <div>
-              <Label className="text-white mb-2 block">Fecha de Emisión</Label>
+              <Label className="text-white mb-2 block">Fecha de emisión</Label>
               <Input
                 type="date"
                 value={issueDate}
-                onChange={(e) => setIssueDate(e.target.value)}
+                onChange={(event) => setIssueDate(event.target.value)}
                 className="bg-slate-800 border-slate-700 text-white"
               />
             </div>
 
             <div>
-              <Label className="text-white mb-2 block">Fecha de Vencimiento (opcional)</Label>
+              <Label className="text-white mb-2 block">Fecha de expiración (opcional)</Label>
               <Input
                 type="date"
                 value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
+                onChange={(event) => setExpiryDate(event.target.value)}
                 className="bg-slate-800 border-slate-700 text-white"
               />
             </div>
 
-            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-              <div className="flex gap-2">
-                <LinkIcon className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-white">
-                  Al agregar el documento, se generará un hash criptográfico único que será
-                  registrado en blockchain Ethereum/Polygon para garantizar su inmutabilidad.
-                </p>
-              </div>
-            </div>
-
-            <Button
-              onClick={handleAddDocument}
-              disabled={isLoading}
-              className="w-full bg-purple-500 hover:bg-purple-600 text-white disabled:opacity-50"
-            >
-              {isLoading ? (
+            <Button onClick={handleAddDocument} disabled={isSubmitting} className="w-full bg-purple-500 hover:bg-purple-600">
+              {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Registrando en Blockchain...
+                  Registrando…
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Agregar y Tokenizar
+                  <Download className="w-4 h-4 mr-2" />
+                  Tokenizar documento
                 </>
               )}
             </Button>
@@ -501,155 +419,160 @@ export function DocumentsScreen({ onNavigate, accessToken }: DocumentsScreenProp
         </DialogContent>
       </Dialog>
 
-      {/* Document Detail Dialog */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Detalles del Documento</DialogTitle>
+            <DialogTitle>Detalle de documento</DialogTitle>
           </DialogHeader>
+
           {selectedDoc && (
             <div className="space-y-4 mt-2">
-              {/* Info principal */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 p-3 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg border border-purple-500/20">
-                  <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Card className="p-4 bg-slate-800 border-slate-700">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                     <FileText className="w-5 h-5 text-purple-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">{selectedDoc.type}</p>
-                    <p className="text-xs text-slate-400 font-mono truncate">{selectedDoc.number}</p>
+                    <p className="text-sm text-white truncate">{selectedDoc.metadata.type}</p>
+                    <p className="text-xs text-slate-400 font-mono truncate">{selectedDoc.metadata.number}</p>
                   </div>
-                  <Badge className={getStatusColor(selectedDoc.verified, selectedDoc.blockchainVerified)}>
-                    {getStatusIcon(selectedDoc.verified, selectedDoc.blockchainVerified)}
-                  </Badge>
                 </div>
-              </div>
+              </Card>
 
-              {/* Información blockchain */}
-              <Card className="p-3 bg-slate-800/50 border-slate-700">
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1.5 flex items-center gap-1">
-                      <LinkIcon className="w-3 h-3" />
-                      Hash del Token
-                    </p>
-                    <button 
-                      onClick={() => openBlockchainExplorer(selectedDoc.tokenHash)}
-                      className="text-blue-400 font-mono text-xs flex items-center gap-1.5 hover:text-blue-300 transition-colors group w-full"
+              <Card className="p-3 bg-slate-800 border-slate-700">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Hash</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(selectedDoc.hash)}
+                      className="font-mono text-blue-400 hover:text-blue-300 transition-colors truncate text-right"
                     >
-                      <span className="truncate">{selectedDoc.tokenHash}</span>
-                      <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-50 group-hover:opacity-100" />
+                      {selectedDoc.hash}
                     </button>
                   </div>
-                  
-                  {selectedDoc.blockchainVerified && selectedDoc.blockchainTxHash && (
-                    <div className="pt-2 border-t border-slate-700">
-                      <p className="text-xs text-emerald-400 mb-1.5 flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        Transacción Blockchain
-                      </p>
-                      <button 
-                        onClick={() => openBlockchainExplorer(selectedDoc.blockchainTxHash!)}
-                        className="text-emerald-400 font-mono text-xs flex items-center gap-1.5 hover:text-emerald-300 transition-colors group w-full"
-                      >
-                        <span className="truncate">{selectedDoc.blockchainTxHash}</span>
-                        <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-50 group-hover:opacity-100" />
+                  {selectedDoc.lastTx && (
+                    <div className="flex justify-between text-xs text-emerald-400">
+                      <span>Transacción</span>
+                      <button onClick={() => openBlockchainExplorer(selectedDoc.lastTx!)} className="font-mono hover:underline truncate text-right">
+                        {selectedDoc.lastTx}
                       </button>
                     </div>
                   )}
                 </div>
               </Card>
 
-              {/* Fechas */}
               <Card className="p-3 bg-slate-800/50 border-slate-700">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <p className="text-xs text-slate-400">Emitido</p>
-                    <p className="text-xs text-white">{new Date(selectedDoc.issueDate).toLocaleDateString('es-MX')}</p>
+                <div className="space-y-2 text-xs text-slate-400">
+                  <div className="flex justify-between">
+                    <span>Emitido</span>
+                    <span>
+                      {selectedDoc.metadata.issueDate
+                        ? new Date(selectedDoc.metadata.issueDate).toLocaleDateString("es-MX")
+                        : "-"}
+                    </span>
                   </div>
-                  {selectedDoc.expiryDate && (
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-700">
-                      <p className="text-xs text-slate-400">Vencimiento</p>
-                      <p className="text-xs text-white">{new Date(selectedDoc.expiryDate).toLocaleDateString('es-MX')}</p>
+                  {selectedDoc.metadata.expiryDate && (
+                    <div className="flex justify-between pt-2 border-t border-slate-700">
+                      <span>Vencimiento</span>
+                      <span>{new Date(selectedDoc.metadata.expiryDate).toLocaleDateString("es-MX")}</span>
                     </div>
                   )}
                 </div>
               </Card>
 
-              {/* Aviso de seguridad */}
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
-                <div className="flex gap-2">
-                  <Shield className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-white">
-                    Documento protegido con blockchain. Hash inmutable verificable por cualquier entidad autorizada.
-                  </p>
-                </div>
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs text-emerald-300 flex items-start gap-2">
+                <Shield className="w-4 h-4 mt-0.5" />
+                <span>Documento protegido en Futurenet. El hash puede verificarse públicamente con cualquier visor Soroban.</span>
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Share Dialog */}
       <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Compartir Documento</DialogTitle>
+            <DialogTitle>Administrar accesos</DialogTitle>
           </DialogHeader>
-          {selectedDoc && (
-            <div className="space-y-4 mt-4">
+
+          {selectedDoc ? (
+            <div className="space-y-5 mt-3">
               <Card className="p-4 bg-slate-800 border-slate-700">
-                <p className="text-sm text-slate-400 mb-1">Documento seleccionado</p>
-                <p className="text-sm text-white">{selectedDoc.type}</p>
-                <p className="text-xs text-slate-400 font-mono mt-1">{selectedDoc.tokenHash}</p>
+                <p className="text-sm text-slate-400 mb-1">Documento</p>
+                <p className="text-sm text-white">{selectedDoc.metadata.type}</p>
+                <p className="text-xs text-slate-400 font-mono truncate">{selectedDoc.hash}</p>
               </Card>
 
-              <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-                <p className="text-sm text-yellow-400">⚠️ Importante</p>
-                <p className="text-xs text-white mt-1">
-                  Esta acción genera una solicitud. El destinatario deberá proporcionar
-                  su RFC para validar su identidad antes de recibir acceso. Todo queda
-                  registrado en blockchain.
-                </p>
+              <div className="space-y-3">
+                <Label className="text-white text-sm">Dirección pública a autorizar</Label>
+                <Input
+                  value={shareTarget}
+                  onChange={(event) => setShareTarget(event.target.value)}
+                  placeholder="G... destino en Futurenet"
+                  className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                />
+                <Button onClick={handleShareSubmit} disabled={isSharing} className="w-full bg-emerald-500 hover:bg-emerald-600">
+                  {isSharing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Firmando…
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-4 h-4 mr-2" />
+                      Conceder acceso
+                    </>
+                  )}
+                </Button>
               </div>
 
-              <Button
-                onClick={handleShare}
-                className="w-full bg-purple-500 hover:bg-purple-600 text-white"
-              >
-                Generar Solicitud de Compartir
-              </Button>
+              <div className="space-y-3">
+                <h3 className="text-sm text-white flex items-center gap-2">
+                  Accesos activos
+                  <Badge variant="outline" className="border-purple-500/40 text-purple-300">
+                    {sharesByDoc.get(selectedDoc.docId)?.length ?? 0}
+                  </Badge>
+                </h3>
 
-              {selectedDoc.activeShares && selectedDoc.activeShares > 0 && (
-                <>
-                  <div className="border-t border-slate-800 pt-4">
-                    <p className="text-sm text-white mb-3">Accesos Activos</p>
-                    <div className="space-y-2">
-                      <Card className="p-3 bg-slate-800 border-slate-700">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-white">Banco Nacional</p>
-                            <p className="text-xs text-slate-400">RFC: BNA010101ABC</p>
-                            <p className="text-xs text-slate-400">Expira en 2 días</p>
-                          </div>
-                          <Button
-                            onClick={() => handleRevoke(selectedDoc.id)}
-                            size="sm"
-                            variant="destructive"
-                            className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30"
-                          >
-                            Revocar
-                          </Button>
-                        </div>
-                      </Card>
+                {(sharesByDoc.get(selectedDoc.docId) ?? []).map((share) => (
+                  <Card key={`${share.docId}-${share.target}`} className="p-4 bg-slate-800 border-slate-700 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-white truncate">{shorten(share.target, 6)}</p>
+                        <p className="text-xs text-slate-400">
+                          Desde {new Date(share.grantedAt).toLocaleString("es-MX")}
+                        </p>
+                      </div>
+                      <Badge className="bg-emerald-500/10 border-emerald-500/40 text-emerald-300">Activo</Badge>
                     </div>
-                  </div>
-                </>
-              )}
+                    <Button
+                      onClick={() => handleRevokeShare(share)}
+                      size="sm"
+                      variant="outline"
+                      className="border-red-500/40 text-red-400 hover:bg-red-500/10"
+                    >
+                      Revocar acceso
+                    </Button>
+                  </Card>
+                ))}
+
+                {(sharesByDoc.get(selectedDoc.docId) ?? []).length === 0 && (
+                  <Card className="p-4 bg-slate-800/60 border-slate-700 text-xs text-slate-400">
+                    No hay accesos registrados para este documento.
+                  </Card>
+                )}
+              </div>
             </div>
+          ) : (
+            <div className="text-sm text-slate-400">Selecciona un documento para gestionar permisos.</div>
           )}
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function shorten(value: string, size = 4): string {
+  if (!value) return "";
+  return `${value.slice(0, size)}…${value.slice(-size)}`;
 }

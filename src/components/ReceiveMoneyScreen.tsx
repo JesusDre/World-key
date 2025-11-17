@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { ArrowLeft, Download, QrCode, Copy, Share2, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -38,6 +38,7 @@ export function ReceiveMoneyScreen({ onNavigate }: ReceiveMoneyScreenProps) {
       toast.success('Copiado al portapapeles');
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
+      console.warn(err);
       toast.error('No se pudo copiar', {
         description: 'Por favor, copia el texto manualmente'
       });

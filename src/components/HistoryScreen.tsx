@@ -1,360 +1,266 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { toast } from 'sonner';
-import { 
-  ArrowLeft, 
-  Send, 
-  Download, 
-  FileText, 
-  Shield,
-  Filter,
-  Search,
-  Eye,
-  ChevronRight
-} from 'lucide-react';
-import { Card } from './ui/card';
-import { Input } from './ui/input';
-import { Badge } from './ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import type { Screen } from '../App';
+import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { ArrowLeft, ChevronRight, Eye, Filter, FileText, Search, Send, Shield } from "lucide-react";
+import { toast } from "sonner";
+import type { Screen } from "../App";
+import { useSoroban } from "@/hooks/useSoroban";
+import type { HistoryRecord } from "@/utils/stellar";
+import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
+import { Input } from "./ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+
+type HistoryCategory = "document" | "verification" | "access" | "identity";
 
 interface HistoryScreenProps {
   onNavigate: (screen: Screen) => void;
-  accessToken?: string;
 }
 
-interface HistoryItem {
+interface DisplayHistoryItem {
   id: string;
-  type: 'payment-sent' | 'payment-received' | 'document-shared' | 'document-access' | 'access-revoked' | 'document-registered';
+  category: HistoryCategory;
   title: string;
   description: string;
-  amount?: number;
   timestamp: string;
-  hash: string;
-  from?: string;
-  to?: string;
-  documentType?: string;
-  rfcVerified?: boolean;
-  blockchainVerified?: boolean;
+  status?: "pending" | "completed" | "denied";
+  hash?: string;
+  actor?: string;
 }
 
-export function HistoryScreen({ onNavigate, accessToken }: HistoryScreenProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
+export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
+  const { history } = useSoroban();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedItem, setSelectedItem] = useState<DisplayHistoryItem | null>(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [activeTab, setActiveTab] = useState<"all" | "documents" | "access">("all");
 
-  useEffect(() => {
-    if (accessToken) {
-      loadHistory();
-    }
-  }, [accessToken]);
+  const mappedHistory: DisplayHistoryItem[] = useMemo(() => history.map(formatHistoryItem), [history]);
 
-  const loadHistory = async () => {
-    try {
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/transactions`;
-      console.log('🔍 Cargando historial...');
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
+  const filteredHistory = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return mappedHistory;
+    return mappedHistory.filter((item) => item.title.toLowerCase().includes(query) || item.description.toLowerCase().includes(query));
+  }, [mappedHistory, searchQuery]);
 
-      console.log('📡 Response status:', response.status);
+  const documentsHistory = filteredHistory.filter((item) => item.category === "document" || item.category === "verification");
+  const accessHistory = filteredHistory.filter((item) => item.category === "access");
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Transacciones cargadas:', data.transactions?.length || 0);
-        console.log('📜 Transacciones:', data.transactions);
-        setHistoryItems(data.transactions || []);
-      } else {
-        const errorText = await response.text();
-        console.error('❌ Error al cargar historial:', errorText);
-      }
-    } catch (error) {
-      console.error('❌ Error loading history:', error);
-    }
-  };
-
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'payment-sent':
-        return <Send className="w-5 h-5 text-red-400" />;
-      case 'payment-received':
-        return <Download className="w-5 h-5 text-emerald-400" />;
-      case 'document-shared':
-      case 'document-access':
-        return <Eye className="w-5 h-5 text-blue-400" />;
-      case 'document-registered':
-        return <FileText className="w-5 h-5 text-emerald-400" />;
-      case 'access-revoked':
-        return <Shield className="w-5 h-5 text-orange-400" />;
+  const getIcon = (category: HistoryCategory) => {
+    switch (category) {
+      case "document":
+        return <FileText className="w-5 h-5 text-blue-400" />;
+      case "verification":
+        return <Shield className="w-5 h-5 text-emerald-400" />;
+      case "access":
+        return <Eye className="w-5 h-5 text-purple-400" />;
+      case "identity":
       default:
-        return <FileText className="w-5 h-5 text-slate-400" />;
+        return <Send className="w-5 h-5 text-slate-400" />;
     }
   };
 
-  const getBackgroundColor = (type: string) => {
-    switch (type) {
-      case 'payment-sent':
-        return 'bg-red-500/10';
-      case 'payment-received':
-        return 'bg-emerald-500/10';
-      case 'document-shared':
-      case 'document-access':
-        return 'bg-blue-500/10';
-      case 'document-registered':
-        return 'bg-emerald-500/10';
-      case 'access-revoked':
-        return 'bg-orange-500/10';
+  const getBackgroundColor = (category: HistoryCategory) => {
+    switch (category) {
+      case "document":
+        return "bg-blue-500/10";
+      case "verification":
+        return "bg-emerald-500/10";
+      case "access":
+        return "bg-purple-500/10";
+      case "identity":
       default:
-        return 'bg-slate-500/10';
+        return "bg-slate-500/10";
     }
   };
 
-  const paymentHistory = historyItems.filter(item => 
-    item.type === 'payment-sent' || item.type === 'payment-received'
-  );
-
-  const documentHistory = historyItems.filter(item => 
-    item.type === 'document-shared' || item.type === 'document-access' || item.type === 'access-revoked' || item.type === 'document-registered'
-  );
-
-  const filteredItems = (items: HistoryItem[]) => {
-    if (!searchQuery) return items;
-    return items.filter(item => 
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+  const openExplorer = (hash?: string) => {
+    if (!hash) {
+      toast.error("Hash no disponible");
+      return;
+    }
+    window.open(`https://horizon-futurenet.stellar.org/transactions/${hash}`, "_blank", "noopener,noreferrer");
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-8">
-      {/* Header */}
       <div className="bg-gradient-to-br from-slate-900 to-slate-900/40 px-6 pt-12 pb-6 border-b border-slate-800">
         <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => onNavigate('dashboard')}
-            className="p-2 hover:bg-slate-800 rounded-full transition-colors"
-          >
+          <button onClick={() => onNavigate("dashboard")} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
             <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-2xl">Historial</h1>
         </div>
 
-        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <Input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar transacciones..."
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Buscar eventos…"
             className="pl-10 h-12 bg-slate-900 border-slate-800 text-white"
           />
         </div>
       </div>
 
-      <div className="px-6 py-6">
-        <Tabs defaultValue="all" className="w-full">
+      <div className="px-6 py-6 space-y-6">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-slate-900 mb-6">
-            <TabsTrigger value="all" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">Todo</TabsTrigger>
-            <TabsTrigger value="payments" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">Pagos</TabsTrigger>
-            <TabsTrigger value="documents" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">Documentos</TabsTrigger>
+            <TabsTrigger value="all" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">
+              Todo
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">
+              Documentos
+            </TabsTrigger>
+            <TabsTrigger value="access" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">
+              Accesos
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="all" className="space-y-3">
-            {filteredItems(historyItems).map((item, index) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Card 
-                  onClick={() => {
-                    setSelectedItem(item);
-                    setShowDetail(true);
-                  }}
-                  className="p-4 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getBackgroundColor(item.type)}`}>
-                      {getIcon(item.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white truncate">{item.title}</p>
-                          <p className="text-xs text-slate-400 truncate">{item.description}</p>
-                        </div>
-                        {item.amount !== undefined && (
-                          <p className={`text-sm ${item.amount > 0 ? 'text-emerald-400' : 'text-slate-300'}`}>
-                            {item.amount > 0 ? '+' : ''}{item.amount.toFixed(2)}
-                          </p>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1">{item.timestamp}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
+          <TabsContent value="all">
+            <HistoryList items={filteredHistory} getIcon={getIcon} getBackgroundColor={getBackgroundColor} onSelect={setSelectedItem} setShowDetail={setShowDetail} />
           </TabsContent>
 
-          <TabsContent value="payments" className="space-y-3">
-            {filteredItems(paymentHistory).map((item, index) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Card 
-                  onClick={() => {
-                    setSelectedItem(item);
-                    setShowDetail(true);
-                  }}
-                  className="p-4 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getBackgroundColor(item.type)}`}>
-                      {getIcon(item.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white truncate">{item.title}</p>
-                          <p className="text-xs text-slate-400 truncate">{item.description}</p>
-                        </div>
-                        {item.amount !== undefined && (
-                          <p className={`text-sm ${item.amount > 0 ? 'text-emerald-400' : 'text-slate-300'}`}>
-                            {item.amount > 0 ? '+' : ''}{item.amount.toFixed(2)}
-                          </p>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1">{item.timestamp}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
+          <TabsContent value="documents">
+            <HistoryList items={documentsHistory} getIcon={getIcon} getBackgroundColor={getBackgroundColor} onSelect={setSelectedItem} setShowDetail={setShowDetail} />
           </TabsContent>
 
-          <TabsContent value="documents" className="space-y-3">
-            {filteredItems(documentHistory).map((item, index) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Card 
-                  onClick={() => {
-                    setSelectedItem(item);
-                    setShowDetail(true);
-                  }}
-                  className="p-4 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getBackgroundColor(item.type)}`}>
-                      {getIcon(item.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white truncate">{item.title}</p>
-                      <p className="text-xs text-slate-400 truncate">{item.description}</p>
-                      <p className="text-xs text-slate-400 mt-1">{item.timestamp}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
+          <TabsContent value="access">
+            <HistoryList items={accessHistory} getIcon={getIcon} getBackgroundColor={getBackgroundColor} onSelect={setSelectedItem} setShowDetail={setShowDetail} />
           </TabsContent>
         </Tabs>
+
+        <Card className="p-4 bg-slate-900/40 border-slate-800">
+          <div className="flex items-center gap-3">
+            <Filter className="w-5 h-5 text-slate-400" />
+            <div>
+              <p className="text-sm text-white">Cada evento es on-chain</p>
+              <p className="text-xs text-slate-400">
+                Los contratos Soroban generan este historial. Usa tu hash para rastrear verificaciones y permisos.
+              </p>
+            </div>
+          </div>
+        </Card>
       </div>
 
-      {/* Detail Dialog */}
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle>Detalles de la Transacción</DialogTitle>
+            <DialogTitle>Detalle del evento</DialogTitle>
           </DialogHeader>
+
           {selectedItem && (
-            <div className="space-y-4 mt-4">
-              <div className="flex items-center gap-3 p-4 bg-slate-800 rounded-xl">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${getBackgroundColor(selectedItem.type)}`}>
-                  {getIcon(selectedItem.type)}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-white">{selectedItem.title}</p>
-                  <p className="text-xs text-slate-400">{selectedItem.description}</p>
-                </div>
-                {selectedItem.amount !== undefined && (
-                  <p className={`text-xl ${selectedItem.amount > 0 ? 'text-emerald-400' : 'text-white'}`}>
-                    {selectedItem.amount > 0 ? '+' : ''}${Math.abs(selectedItem.amount).toFixed(2)}
-                  </p>
-                )}
-              </div>
-
+            <div className="space-y-4 mt-3">
               <Card className="p-4 bg-slate-800 border-slate-700">
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1">Fecha y Hora</p>
-                    <p className="text-white">{selectedItem.timestamp}</p>
-                  </div>
-
-                  {selectedItem.from && (
-                    <div>
-                      <p className="text-xs text-slate-400 mb-1">De</p>
-                      <p className="text-white">{selectedItem.from}</p>
-                    </div>
-                  )}
-
-                  {selectedItem.to && (
-                    <div>
-                      <p className="text-xs text-slate-400 mb-1">Para</p>
-                      <p className="text-white">{selectedItem.to}</p>
-                    </div>
-                  )}
-
-                  {selectedItem.documentType && (
-                    <div>
-                      <p className="text-xs text-slate-400 mb-1">Tipo de Documento</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-white">{selectedItem.documentType}</p>
-                        {selectedItem.rfcVerified && (
-                          <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs">
-                            RFC Verificado
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1">Hash de Transacción</p>
-                    <p className="font-mono text-xs break-all text-blue-400">{selectedItem.hash}</p>
-                  </div>
-                </div>
+                <h3 className="text-sm text-white">{selectedItem.title}</h3>
+                <p className="text-xs text-slate-400 mt-1">{selectedItem.description}</p>
               </Card>
 
-              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                <div className="flex gap-2">
-                  <Shield className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-slate-400">
-                    Esta transacción está protegida con firma digital y registrada en el historial auditable.
-                  </p>
+              <Card className="p-3 bg-slate-800 border-slate-700 text-xs text-slate-400 space-y-2">
+                <div className="flex justify-between">
+                  <span>Fecha</span>
+                  <span>{new Date(selectedItem.timestamp).toLocaleString("es-MX")}</span>
                 </div>
-              </div>
+                {selectedItem.actor && (
+                  <div className="flex justify-between">
+                    <span>Actor</span>
+                    <span className="font-mono text-slate-300 truncate">{selectedItem.actor}</span>
+                  </div>
+                )}
+                {selectedItem.hash && (
+                  <div className="flex justify-between items-center">
+                    <span>Hash</span>
+                    <button
+                      onClick={() => openExplorer(selectedItem.hash)}
+                      className="font-mono text-blue-400 hover:text-blue-300 transition-colors truncate text-right"
+                    >
+                      {selectedItem.hash}
+                    </button>
+                  </div>
+                )}
+              </Card>
             </div>
           )}
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function HistoryList({
+  items,
+  getIcon,
+  getBackgroundColor,
+  onSelect,
+  setShowDetail,
+}: {
+  items: DisplayHistoryItem[];
+  getIcon: (category: HistoryCategory) => JSX.Element;
+  getBackgroundColor: (category: HistoryCategory) => string;
+  onSelect: (item: DisplayHistoryItem) => void;
+  setShowDetail: (open: boolean) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <Card className="p-6 bg-slate-900 border-slate-800 text-center text-sm text-slate-400">
+        No hay eventos registrados todavía.
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item, index) => (
+        <motion.div key={item.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
+          <Card
+            onClick={() => {
+              onSelect(item);
+              setShowDetail(true);
+            }}
+            className="p-4 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getBackgroundColor(item.category)}`}>{getIcon(item.category)}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{item.title}</p>
+                    <p className="text-xs text-slate-400 truncate">{item.description}</p>
+                  </div>
+                  {item.status && (
+                    <Badge
+                      className={
+                        item.status === "completed"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                          : item.status === "pending"
+                          ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+                          : "bg-red-500/10 text-red-400 border-red-500/30"
+                      }
+                    >
+                      {item.status === "completed" ? "Completado" : item.status === "pending" ? "Pendiente" : "Denegado"}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">{new Date(item.timestamp).toLocaleString("es-MX")}</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-600" />
+            </div>
+          </Card>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+function formatHistoryItem(item: HistoryRecord): DisplayHistoryItem {
+  const category: HistoryCategory = item.type === "access" ? "access" : item.type === "identity" ? "identity" : "document";
+  return {
+    id: item.id,
+    category,
+    title: item.title,
+    description: item.description,
+    timestamp: item.timestamp,
+    hash: item.txHash,
+    actor: item.actor,
+  };
 }

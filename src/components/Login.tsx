@@ -1,16 +1,18 @@
-import { useState } from 'react';
-import { motion } from 'motion/react';
-import { Fingerprint, Lock, Shield, Mail, Eye, EyeOff } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Card } from './ui/card';
-import { toast } from 'sonner';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { RecoveryScreen } from './RecoveryScreen';
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Fingerprint, Lock, Shield, Mail, Eye, EyeOff } from "lucide-react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Card } from "./ui/card";
+import { toast } from "sonner";
+import { RecoveryScreen } from "./RecoveryScreen";
+import { useSoroban } from "../hooks/useSoroban";
+import { login as loginRequest, register as registerRequest } from "../services/auth";
+import type { AuthSession } from "../types/auth";
 
 interface LoginProps {
-  onLogin: (accessToken: string, userId: string) => void;
+  onLogin: (session: AuthSession) => void;
 }
 
 export function Login({ onLogin }: LoginProps) {
@@ -23,6 +25,7 @@ export function Login({ onLogin }: LoginProps) {
   const [isSignup, setIsSignup] = useState(false);
   const [name, setName] = useState('');
   const [showRecovery, setShowRecovery] = useState(false);
+  const { connectWallet: connectWalletCtx, registerIdentity, refresh, setAuthSession } = useSoroban();
 
   const handleBiometricLogin = () => {
     // Simular autenticación biométrica - en producción usarías Web Authentication API
@@ -53,28 +56,33 @@ export function Login({ onLogin }: LoginProps) {
     setIsLoading(true);
 
     try {
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/login`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
-        },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al iniciar sesión');
+      const authSession = await loginRequest({ email, password });
+      await connectWalletCtx();
+      const profile = await refresh();
+      if (!profile) {
+        throw new Error('No encontramos una identidad en Soroban para esta wallet.');
       }
 
-      toast.success('¡Bienvenido a WorldKey!');
-      onLogin(data.accessToken, data.user.id);
-    } catch (error: any) {
-      console.error('Login error:', error);
+      if (profile.email && profile.email.toLowerCase() !== email.toLowerCase()) {
+        throw new Error('El email ingresado no coincide con la identidad registrada.');
+      }
+
+      toast.success('¡Bienvenido a WorldKey!', {
+        description: `Identidad: ${shorten(profile.publicKey)}`
+      });
+      const session: AuthSession = {
+        token: authSession.token,
+        fullName: authSession.fullName,
+        publicKey: authSession.publicKey,
+        email,
+      };
+      setAuthSession(session);
+      onLogin(session);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Login error:', err);
       toast.error('Error al iniciar sesión', {
-        description: error.message || 'Verifica tus credenciales'
+        description: err.message || 'Verifica tus credenciales'
       });
     } finally {
       setIsLoading(false);
@@ -95,33 +103,32 @@ export function Login({ onLogin }: LoginProps) {
     setIsLoading(true);
 
     try {
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-4118c158/signup`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
-        },
-        body: JSON.stringify({ email, password, name })
+      const profile = await registerIdentity({ name, email });
+      const authSession = await registerRequest({
+        email,
+        password,
+        fullName: name,
+        publicKey: profile.publicKey,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al crear cuenta');
-      }
 
       toast.success('¡Cuenta creada exitosamente!', {
-        description: 'Ahora puedes iniciar sesión'
+        description: `Soulbound emitido para ${shorten(profile.publicKey)}`
       });
-      
+
       setIsSignup(false);
-      // Auto login después de registro
-      setTimeout(() => handleEmailLogin(), 500);
-    } catch (error: any) {
-      console.error('Signup error:', error);
+      const session: AuthSession = {
+        token: authSession.token,
+        fullName: authSession.fullName,
+        publicKey: authSession.publicKey,
+        email,
+      };
+      setAuthSession(session);
+      onLogin(session);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Signup error:', err);
       toast.error('Error al crear cuenta', {
-        description: error.message
+        description: err.message
       });
     } finally {
       setIsLoading(false);
@@ -318,4 +325,9 @@ export function Login({ onLogin }: LoginProps) {
       </div>
     </div>
   );
+}
+
+function shorten(value: string, size = 4): string {
+  if (!value) return "";
+  return `${value.slice(0, size)}…${value.slice(-size)}`;
 }

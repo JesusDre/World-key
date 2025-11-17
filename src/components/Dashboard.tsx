@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { 
   Send, 
   Download, 
@@ -14,7 +14,6 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { Card } from './ui/card';
-import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import type { Screen } from '../App';

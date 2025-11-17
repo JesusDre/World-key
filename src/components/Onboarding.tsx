@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Wallet, FileCheck, ChevronRight } from 'lucide-react';
 import { Button } from './ui/button';
 

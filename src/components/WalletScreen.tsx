@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { motion } from 'motion/react';
-import { ArrowLeft, Plus, CreditCard, CheckCircle, Trash2, ArrowUpRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Plus, CheckCircle, Trash2, ArrowUpRight } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';

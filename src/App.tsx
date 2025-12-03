@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Onboarding } from './components/Onboarding';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
-import { WalletScreen } from './components/WalletScreen';
+import { DigitalWallet } from './components/DigitalWallet';
 import { DocumentsScreen } from './components/DocumentsScreen';
 import { RequestsScreen } from './components/RequestsScreen';
 import { NotificationsScreen } from './components/NotificationsScreen';
@@ -13,25 +13,60 @@ import { ReceiveMoneyScreen } from './components/ReceiveMoneyScreen';
 import { Toaster } from './components/ui/sonner';
 import { useSoroban } from './hooks/useSoroban';
 import type { AuthSession } from './types/auth';
+import { Fingerprint } from 'lucide-react';
+import { Button } from './components/ui/button';
 
-export type Screen = 
-  | 'onboarding' 
-  | 'login' 
-  | 'dashboard' 
-  | 'wallet' 
-  | 'documents' 
+export type Screen =
+  | 'onboarding'
+  | 'login'
+  | 'dashboard'
+  | 'wallet'
+  | 'documents'
   | 'requests'
   | 'notifications'
-  | 'history' 
+  | 'history'
   | 'settings'
   | 'send-money'
   | 'receive-money';
 
+function UnlockScreen({ onUnlock }: { onUnlock: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-4">
+      <div className="text-center">
+        <div className="w-24 h-24 mx-auto mb-6 bg-emerald-500/10 rounded-full flex items-center justify-center animate-pulse">
+          <Fingerprint className="w-12 h-12 text-emerald-500" />
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">WorldKey Bloqueado</h2>
+        <p className="text-slate-400 mb-8">Usa tu huella o Face ID para desbloquear</p>
+        <Button
+          onClick={onUnlock}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-6 rounded-full text-lg shadow-lg shadow-emerald-500/20"
+        >
+          Desbloquear
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('onboarding');
-  const [session, setSession] = useState<AuthSession | null>(null);
   const { identity, disconnect, authSession: contextSession, setAuthSession } = useSoroban();
-  const isAuthenticated = Boolean(identity);
+
+  const [session, setSession] = useState<AuthSession | null>(contextSession);
+  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
+    return contextSession ? 'dashboard' : 'onboarding';
+  });
+
+  const [isLocked, setIsLocked] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const bioEnabled = localStorage.getItem('biometricEnabled') === 'true';
+      const hasSession = !!localStorage.getItem('worldkey-auth-session');
+      return bioEnabled && hasSession;
+    }
+    return false;
+  });
+
+  const isAuthenticated = Boolean(identity) || Boolean(session);
 
   const handleLogin = (authSession: AuthSession) => {
     setSession(authSession);
@@ -71,7 +106,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard onNavigate={navigateTo} />;
       case 'wallet':
-        return <WalletScreen onNavigate={navigateTo} />;
+        return <DigitalWallet onNavigate={navigateTo} />;
       case 'documents':
         return <DocumentsScreen onNavigate={navigateTo} />;
       case 'requests':
@@ -93,6 +128,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950">
+      {isLocked && <UnlockScreen onUnlock={() => setIsLocked(false)} />}
       {renderScreen()}
       <Toaster />
     </div>

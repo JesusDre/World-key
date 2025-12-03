@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, 
-  Shield, 
-  Fingerprint, 
+import {
+  ArrowLeft,
+  Shield,
+  Fingerprint,
   Smartphone,
   Key,
   Download,
@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Lock,
   User,
-  
+
   Users,
   CheckCircle,
   AlertCircle,
@@ -41,7 +41,12 @@ interface SettingsScreenProps {
 
 export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreenProps) {
   const { identity } = useSoroban();
-  const [biometricEnabled, setBiometricEnabled] = useState(true);
+  const [biometricEnabled, setBiometricEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('biometricEnabled') === 'true';
+    }
+    return false;
+  });
   const [notifications, setNotifications] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -52,26 +57,26 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
   const [showSocialRecoveryDialog, setShowSocialRecoveryDialog] = useState(false);
   const [showQuestionsDialog, setShowQuestionsDialog] = useState(false);
   const [show2FADialog, setShow2FADialog] = useState(false);
-  
+
   const [userProfile, setUserProfile] = useState({
     name: '',
     email: '',
     worldKeyId: ''
   });
-  
+
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [currentLanguage, setCurrentLanguage] = useState('Español');
   const [seedPhrase] = useState('wisdom tackle hover flight menu gather winter bounce ship veteran future');
 
   // Social Recovery
-  const [guardians, setGuardians] = useState<Array<{email: string; token: string}>>([]);
+  const [guardians, setGuardians] = useState<Array<{ email: string; token: string }>>([]);
   const [newGuardianEmail, setNewGuardianEmail] = useState('');
   const [socialRecoveryEnabled, setSocialRecoveryEnabled] = useState(false);
   const [copiedGuardian, setCopiedGuardian] = useState<number | null>(null);
 
   // Security Questions
-  const [securityQuestions, setSecurityQuestions] = useState<Array<{question: string; answer: string}>>([]);
+  const [securityQuestions, setSecurityQuestions] = useState<Array<{ question: string; answer: string }>>([]);
   const [questionsEnabled, setQuestionsEnabled] = useState(false);
 
   // 2FA Setup
@@ -172,6 +177,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
 
   const handleBiometricToggle = (checked: boolean) => {
     setBiometricEnabled(checked);
+    localStorage.setItem('biometricEnabled', String(checked));
     toast.success(
       checked ? 'Autenticación biométrica activada' : 'Autenticación biométrica desactivada'
     );
@@ -272,10 +278,10 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
       return;
     }
 
-    const allComplete = securityQuestions.every(q => 
+    const allComplete = securityQuestions.every(q =>
       q.question.trim() !== '' && q.answer.trim() !== ''
     );
-    
+
     if (!allComplete) {
       toast.error('Todas las preguntas y respuestas deben estar completas');
       return;
@@ -336,9 +342,9 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
             <User className="w-5 h-5 text-blue-400" />
             Perfil
           </h2>
-          
+
           <Card className="bg-slate-900 border-slate-800 divide-y divide-slate-800">
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => setShowProfileDialog(true)}
             >
@@ -367,7 +373,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
             <Shield className="w-5 h-5 text-emerald-400" />
             Seguridad
           </h2>
-          
+
           <Card className="bg-slate-900 border-slate-800 divide-y divide-slate-800">
             <div className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -385,7 +391,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               />
             </div>
 
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => setShowPinDialog(true)}
             >
@@ -401,7 +407,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               <ChevronRight className="w-5 h-5 text-slate-600" />
             </button>
 
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => setShowBackupDialog(true)}
             >
@@ -425,9 +431,9 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
             <Key className="w-5 h-5 text-orange-400" />
             Recuperación de Cuenta
           </h2>
-          
+
           <Card className="bg-slate-900 border-slate-800 divide-y divide-slate-800">
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => setShowSocialRecoveryDialog(true)}
             >
@@ -443,8 +449,8 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
                     )}
                   </div>
                   <p className="text-xs text-slate-400">
-                    {socialRecoveryEnabled 
-                      ? `${guardians.length} guardianes configurados` 
+                    {socialRecoveryEnabled
+                      ? `${guardians.length} guardianes configurados`
                       : 'Comparte tu clave con personas de confianza'}
                   </p>
                 </div>
@@ -452,7 +458,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               <ChevronRight className="w-5 h-5 text-slate-600" />
             </button>
 
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => setShowQuestionsDialog(true)}
             >
@@ -468,8 +474,8 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
                     )}
                   </div>
                   <p className="text-xs text-slate-400">
-                    {questionsEnabled 
-                      ? `Configuradas (${securityQuestions.length})` 
+                    {questionsEnabled
+                      ? `Configuradas (${securityQuestions.length})`
                       : 'Configura preguntas personales'}
                   </p>
                 </div>
@@ -477,7 +483,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               <ChevronRight className="w-5 h-5 text-slate-600" />
             </button>
 
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => setShow2FADialog(true)}
             >
@@ -546,7 +552,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               />
             </div>
 
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => setShowLanguageDialog(true)}
             >
@@ -572,7 +578,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
           </h2>
 
           <Card className="bg-slate-900 border-slate-800 divide-y divide-slate-800">
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => toast.info('Abriendo centro de ayuda...')}
             >
@@ -585,7 +591,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               <ChevronRight className="w-5 h-5 text-slate-600" />
             </button>
 
-            <button 
+            <button
               className="p-4 flex items-center justify-between w-full hover:bg-slate-800/50 transition-colors"
               onClick={() => toast.info('WorldKey v1.0.0 - Prototipo de demostración')}
             >
@@ -698,11 +704,10 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               <button
                 key={lang}
                 onClick={() => handleLanguageChange(lang)}
-                className={`w-full p-3 rounded-lg text-left transition-colors ${
-                  currentLanguage === lang
-                    ? 'bg-blue-500/20 border border-blue-500/30 text-blue-400'
-                    : 'bg-slate-800 hover:bg-slate-700 text-white'
-                }`}
+                className={`w-full p-3 rounded-lg text-left transition-colors ${currentLanguage === lang
+                  ? 'bg-blue-500/20 border border-blue-500/30 text-blue-400'
+                  : 'bg-slate-800 hover:bg-slate-700 text-white'
+                  }`}
               >
                 {lang}
               </button>
@@ -905,7 +910,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
                         </button>
                       )}
                     </div>
-                    
+
                     <div className="space-y-3">
                       <Input
                         type="text"
@@ -960,9 +965,8 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
                 <div className="p-3 bg-slate-800 rounded-lg">
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400">Preguntas configuradas:</span>
-                    <span className={`${
-                      securityQuestions.length >= 3 ? 'text-emerald-400' : 'text-orange-400'
-                    }`}>
+                    <span className={`${securityQuestions.length >= 3 ? 'text-emerald-400' : 'text-orange-400'
+                      }`}>
                       {securityQuestions.length} {securityQuestions.length >= 3 ? '✓' : '(mínimo 3)'}
                     </span>
                   </div>
@@ -992,7 +996,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
                   </Button>
                   <Button
                     onClick={handleSaveQuestions}
-                    disabled={securityQuestions.length < 3 || 
+                    disabled={securityQuestions.length < 3 ||
                       !securityQuestions.every(q => q.question.trim() && q.answer.trim())}
                     className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1022,7 +1026,7 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
                   <div className="p-4 bg-white rounded-lg">
                     <div className="w-48 h-48 bg-slate-200 flex items-center justify-center">
                       <p className="text-xs text-slate-600 text-center px-4">
-                        Código QR<br/>
+                        Código QR<br />
                         (Escanear con autenticador)
                       </p>
                     </div>

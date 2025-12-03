@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Send, User, Fingerprint, CreditCard } from 'lucide-react';
+import { ArrowLeft, Send, User, Fingerprint, CreditCard, QrCode } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
@@ -8,6 +8,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import type { Screen } from '../App';
 import { toast } from 'sonner';
+import { QRScanner } from './QRScanner';
 
 interface SendMoneyScreenProps {
   onNavigate: (screen: Screen) => void;
@@ -19,6 +20,7 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
   const [concept, setConcept] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('1');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const paymentMethods = [
     { id: '1', type: 'Visa', last4: '4242', balance: 2450.00 },
@@ -35,22 +37,45 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
     setTimeout(() => onNavigate('dashboard'), 1500);
   };
 
+  const handleScan = (data: string) => {
+    setRecipient(data);
+    setShowScanner(false);
+    toast.success('Código QR escaneado');
+  };
+
   const selectedMethodData = paymentMethods.find(m => m.id === selectedMethod);
   const fee = parseFloat(amount) * 0.01; // 1% fee
   const total = parseFloat(amount) + fee;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      {showScanner && (
+        <QRScanner
+          onScan={handleScan}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
       {/* Header */}
       <div className="bg-gradient-to-br from-emerald-900/40 to-slate-900/40 px-6 pt-12 pb-8 border-b border-slate-800">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => onNavigate('dashboard')}
-            className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-2xl">Enviar Dinero</h1>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowScanner(true)}
+            className="rounded-full bg-slate-800/50 hover:bg-slate-800 text-emerald-400"
           >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-2xl">Enviar Dinero</h1>
+            <QrCode className="w-5 h-5" />
+          </Button>
         </div>
       </div>
 
@@ -80,14 +105,23 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
             {/* Recipient */}
             <div>
               <Label className="text-slate-400 mb-2">Destinatario</Label>
-              <Input
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-                placeholder="WorldKey ID, correo o RFC"
-                className="h-12 bg-slate-900 border-slate-800 text-white"
-              />
+              <div className="flex gap-2">
+                <Input
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                  placeholder="WorldKey ID, correo o RFC"
+                  className="h-12 bg-slate-900 border-slate-800 text-white"
+                />
+                <Button
+                  variant="outline"
+                  className="h-12 w-12 border-slate-800 bg-slate-900 hover:bg-slate-800 px-0"
+                  onClick={() => setShowScanner(true)}
+                >
+                  <QrCode className="w-5 h-5 text-slate-400" />
+                </Button>
+              </div>
               <p className="text-xs text-slate-400 mt-2">
-                Ingresa el identificador del destinatario
+                Ingresa el identificador del destinatario o escanea un QR
               </p>
             </div>
 

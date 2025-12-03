@@ -1,7 +1,14 @@
-const DEFAULT_BASE_URL = "http://localhost:8080/api";
+const DEFAULT_BASE_URL = "/api";
 
-const meta = import.meta as unknown as { env: Record<string, string | undefined> };
-const baseUrl = meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? DEFAULT_BASE_URL;
+// Leer import.meta.env de forma defensiva: en algunos entornos (p.ej. builds
+// servidos incorrectamente o herramientas) `import.meta.env` puede ser
+// undefined en tiempo de ejecución. Normalmente Vite reemplaza esto en
+// tiempo de compilación, pero añadimos un fallback seguro para evitar un
+// crash en el cliente.
+const safeMeta: { env?: Record<string, string | undefined> } =
+  typeof import.meta !== "undefined" ? (import.meta as any) : {};
+const rawBase = safeMeta.env?.VITE_API_BASE_URL;
+const baseUrl = rawBase && rawBase.length > 0 ? rawBase.replace(/\/$/, "") : DEFAULT_BASE_URL;
 
 export type ApiRequestOptions = {
   method?: string;

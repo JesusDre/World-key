@@ -162,11 +162,21 @@ export function Login({ onLogin }: LoginProps) {
         // Intentar login
         const authSession = await googleLogin({ token });
 
+        // Decode token to get photo
+        let photoUrl = "";
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          photoUrl = payload.picture;
+        } catch (e) {
+          console.log("Error parsing JWT for photo", e);
+        }
+
         const session: AuthSession = {
           token: authSession.token,
           fullName: authSession.fullName,
           publicKey: authSession.publicKey,
           email: "Google Account",
+          photoUrl
         };
         setAuthSession(session);
         onLogin(session);
@@ -190,11 +200,21 @@ export function Login({ onLogin }: LoginProps) {
             publicKey: publicKey
           });
 
+          // Decode token to get photo
+          let photoUrl = "";
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            photoUrl = payload.picture;
+          } catch (e) {
+            console.log("Error parsing JWT for photo", e);
+          }
+
           const session: AuthSession = {
             token: authSession.token,
             fullName: authSession.fullName,
             publicKey: authSession.publicKey || "",
             email: "Google Account",
+            photoUrl
           };
           setAuthSession(session);
           onLogin(session);

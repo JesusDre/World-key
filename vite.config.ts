@@ -20,6 +20,8 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
+        start_url: '/',
+        orientation: 'portrait',
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -43,6 +45,7 @@ export default defineConfig({
   ],
   server: {
     host: true,
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8080',

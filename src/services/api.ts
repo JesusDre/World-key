@@ -60,6 +60,13 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   const payload = isJson ? await response.json().catch(() => null) : await response.text();
 
   if (!response.ok) {
+    // Si el token expiró (403 Forbidden), limpiar sesión y recargar
+    if (response.status === 403 && token) {
+      localStorage.removeItem('worldkey-auth-session');
+      window.location.reload();
+      throw new ApiError('Sesión expirada', response.status, payload);
+    }
+
     const message =
       (isJson && payload && typeof payload === "object" && "message" in payload
         ? String((payload as { message?: string }).message)

@@ -1,54 +1,99 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Send, User, Fingerprint, CreditCard, QrCode } from 'lucide-react';
+import { ArrowLeft, Send, User, Fingerprint, QrCode, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import type { Screen } from '../App';
+import type { AuthSession } from '../types/auth';
 import { toast } from 'sonner';
 import { QRScanner } from './QRScanner';
+import { apiRequest } from '../services/api';
 
 interface SendMoneyScreenProps {
   onNavigate: (screen: Screen) => void;
+  session?: AuthSession;
 }
 
-export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
+export function SendMoneyScreen({ onNavigate, session }: SendMoneyScreenProps) {
   const [amount, setAmount] = useState('');
   const [recipient, setRecipient] = useState('');
-  const [concept, setConcept] = useState('');
-  const [selectedMethod, setSelectedMethod] = useState('1');
+  const [description, setDescription] = useState('');
+  const [balance, setBalance] = useState<number>(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [success, setSuccess] = useState(false);
 
-  const paymentMethods = [
-    { id: '1', type: 'Visa', last4: '4242', balance: 2450.00 },
-    { id: '2', type: 'Mastercard', last4: '8888', balance: 1230.50 },
-    { id: '3', type: 'Cuenta Bancaria', last4: '1234', balance: 5420.00 },
-  ];
+  useEffect(() => {
+    // Load balance
+    if (session?.token) {
+      apiRequest('/wallet/balance', {
+        method: 'GET',
+        token: session.token
+      })
+        .then((data: any) => {
+          setBalance(data.balance || 0);
+        })
+        .catch(err => console.error('Error loading balance:', err));
+    }
+  }, [session]);
 
-  const handleSend = () => {
-    // Simulate biometric confirmation
-    toast.success('Pago enviado exitosamente', {
-      description: `$${amount} enviado a ${recipient}`
-    });
-    setShowConfirm(false);
-    setTimeout(() => onNavigate('dashboard'), 1500);
+  const handleSend = async () => {
+    if (!recipient || !amount || parseFloat(amount) <= 0) {
+      setError('Por favor completa todos los campos');
+      return;
+    }
+
+    if (parseFloat(amount) > balance) {
+      setError('Saldo insuficiente');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response: any = await apiRequest('/wallet/transfer', {
+        method: 'POST',
+        token: session?.token,
+        body: {
+          toUserEmail: recipient,
+          amount: parseFloat(amount),
+          description: description || 'Transferencia WorldKey'
+        }
+      });
+
+      if (response.success) {
+        setSuccess(true);
+        toast.success('Transferencia exitosa', {
+          description: `$${amount} enviado a ${recipient}`
+        });
+        setTimeout(() => {
+          onNavigate('dashboard');
+        }, 2000);
+      } else {
+        setError(response.message || 'Error al procesar la transferencia');
+      }
+    } catch (err: any) {
+      console.error('Transfer error:', err);
+      setError(err.message || 'Error al procesar la transferencia');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleScan = (data: string) => {
+    // Assume QR contains email
     setRecipient(data);
     setShowScanner(false);
     toast.success('Código QR escaneado');
   };
 
-  const selectedMethodData = paymentMethods.find(m => m.id === selectedMethod);
-  const fee = parseFloat(amount) * 0.01; // 1% fee
-  const total = parseFloat(amount) + fee;
-
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white pb-24">
       {showScanner && (
         <QRScanner
           onScan={handleScan}
@@ -66,7 +111,10 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
             >
               <ArrowLeft className="w-6 h-6" />
             </button>
-            <h1 className="text-2xl">Enviar Dinero</h1>
+            <div>
+              <h1 className="text-2xl font-bold">Enviar Dinero</h1>
+              <p className="text-sm text-slate-400">Saldo disponible: ${balance.toFixed(2)}</p>
+            </div>
           </div>
           <Button
             variant="ghost"
@@ -86,6 +134,33 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            {/* Success Message */}
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-emerald-500/10 border border-emerald-500/50 rounded-xl p-4 flex items-center gap-3"
+              >
+                <CheckCircle className="w-6 h-6 text-emerald-400" />
+                <div>
+                  <p className="text-emerald-400 font-medium">¡Transferencia exitosa!</p>
+                  <p className="text-sm text-slate-400">Redirigiendo...</p>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 flex items-center gap-3"
+              >
+                <AlertCircle className="w-6 h-6 text-red-400" />
+                <p className="text-red-400">{error}</p>
+              </motion.div>
+            )}
+
             {/* Amount Input */}
             <div>
               <Label className="text-slate-400 mb-2">Cantidad a enviar</Label>
@@ -100,6 +175,9 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-lg text-slate-400">MXN</span>
               </div>
+              {parseFloat(amount) > balance && (
+                <p className="text-xs text-red-400 mt-2">Saldo insuficiente</p>
+              )}
             </div>
 
             {/* Recipient */}
@@ -109,7 +187,7 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
                 <Input
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="WorldKey ID, correo o RFC"
+                  placeholder="Email del destinatario"
                   className="h-12 bg-slate-900 border-slate-800 text-white"
                 />
                 <Button
@@ -121,33 +199,16 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
                 </Button>
               </div>
               <p className="text-xs text-slate-400 mt-2">
-                Ingresa el identificador del destinatario o escanea un QR
+                Ingresa el email del destinatario o escanea su código QR
               </p>
             </div>
 
-            {/* Payment Method */}
+            {/* Description */}
             <div>
-              <Label className="text-slate-400 mb-2">Método de pago</Label>
-              <Select value={selectedMethod} onValueChange={setSelectedMethod}>
-                <SelectTrigger className="h-12 bg-slate-900 border-slate-800 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  {paymentMethods.map((method) => (
-                    <SelectItem key={method.id} value={method.id}>
-                      {method.type} •••• {method.last4} (${method.balance.toFixed(2)})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Concept */}
-            <div>
-              <Label className="text-slate-400 mb-2">Concepto (opcional)</Label>
+              <Label className="text-slate-400 mb-2">Descripción (opcional)</Label>
               <Input
-                value={concept}
-                onChange={(e) => setConcept(e.target.value)}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Ej: Pago de cena"
                 className="h-12 bg-slate-900 border-slate-800 text-white"
               />
@@ -158,16 +219,16 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
               <Card className="p-4 bg-slate-900 border-slate-800">
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Subtotal</span>
+                    <span className="text-slate-400">Monto a enviar</span>
                     <span className="text-white">${parseFloat(amount).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Comisión (1%)</span>
-                    <span className="text-white">${fee.toFixed(2)}</span>
+                    <span className="text-slate-400">Comisión</span>
+                    <span className="text-emerald-400">$0.00</span>
                   </div>
                   <div className="border-t border-slate-800 pt-2 flex justify-between">
-                    <span className="text-white">Total</span>
-                    <span className="text-lg text-white">${total.toFixed(2)}</span>
+                    <span className="text-white font-medium">Total</span>
+                    <span className="text-lg text-white">${parseFloat(amount).toFixed(2)}</span>
                   </div>
                 </div>
               </Card>
@@ -176,8 +237,8 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
             {/* Submit Button */}
             <Button
               onClick={() => setShowConfirm(true)}
-              disabled={!amount || !recipient || parseFloat(amount) <= 0}
-              className="w-full h-14 bg-emerald-500 hover:bg-emerald-600 text-white gap-2"
+              disabled={!amount || !recipient || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+              className="w-full h-14 bg-emerald-500 hover:bg-emerald-600 text-white gap-2 disabled:opacity-50"
             >
               <Send className="w-5 h-5" />
               Continuar
@@ -217,22 +278,10 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center">
-                      <CreditCard className="w-5 h-5 text-slate-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs text-slate-400">Desde</p>
-                      <p className="text-sm text-white">
-                        {selectedMethodData?.type} •••• {selectedMethodData?.last4}
-                      </p>
-                    </div>
-                  </div>
-
-                  {concept && (
+                  {description && (
                     <div className="p-3 bg-slate-800 rounded-lg">
-                      <p className="text-xs text-slate-400 mb-1">Concepto</p>
-                      <p className="text-sm text-white">{concept}</p>
+                      <p className="text-xs text-slate-400 mb-1">Descripción</p>
+                      <p className="text-sm text-white">{description}</p>
                     </div>
                   )}
                 </div>
@@ -240,11 +289,11 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
                 <div className="pt-4 border-t border-slate-800 space-y-2 text-sm">
                   <div className="flex justify-between text-slate-400">
                     <span>Comisión</span>
-                    <span>${fee.toFixed(2)}</span>
+                    <span className="text-emerald-400">$0.00</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-white">Total a pagar</span>
-                    <span className="text-lg text-white">${total.toFixed(2)}</span>
+                    <span className="text-white">Total a enviar</span>
+                    <span className="text-lg text-white">${parseFloat(amount).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -254,18 +303,24 @@ export function SendMoneyScreen({ onNavigate }: SendMoneyScreenProps) {
             <div className="text-center py-6">
               <button
                 onClick={handleSend}
-                className="w-24 h-24 mx-auto mb-4 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-full flex items-center justify-center border-2 border-emerald-500/50 hover:border-emerald-500 transition-all hover:scale-105 active:scale-95"
+                disabled={isLoading}
+                className="w-24 h-24 mx-auto mb-4 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-full flex items-center justify-center border-2 border-emerald-500/50 hover:border-emerald-500 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
               >
-                <Fingerprint className="w-12 h-12 text-emerald-400" />
+                {isLoading ? (
+                  <Loader2 className="w-12 h-12 text-emerald-400 animate-spin" />
+                ) : (
+                  <Fingerprint className="w-12 h-12 text-emerald-400" />
+                )}
               </button>
               <p className="text-sm text-slate-400">
-                Confirma con tu huella o Face ID
+                {isLoading ? 'Procesando...' : 'Confirma con tu huella o Face ID'}
               </p>
             </div>
 
             <Button
               onClick={() => setShowConfirm(false)}
               variant="outline"
+              disabled={isLoading}
               className="w-full border-slate-700 text-slate-300 hover:bg-slate-800"
             >
               Cancelar

@@ -10,6 +10,8 @@ import { HistoryScreen } from './components/HistoryScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { SendMoneyScreen } from './components/SendMoneyScreen';
 import { ReceiveMoneyScreen } from './components/ReceiveMoneyScreen';
+import { RechargeScreen } from './components/RechargeScreen';
+import { PublicFileView } from './components/PublicFileView';
 import { Toaster } from './components/ui/sonner';
 import { useSoroban } from './hooks/useSoroban';
 import type { AuthSession } from './types/auth';
@@ -29,6 +31,7 @@ export type Screen =
   | 'settings'
   | 'send-money'
   | 'receive-money'
+  | 'recharge'
   | 'plans';
 
 function UnlockScreen({ onUnlock }: { onUnlock: () => void }) {
@@ -53,6 +56,9 @@ function UnlockScreen({ onUnlock }: { onUnlock: () => void }) {
 
 export default function App() {
   const { identity, disconnect, authSession: contextSession, setAuthSession } = useSoroban();
+
+  // Check if we're on a public share link
+  const isPublicShareLink = window.location.pathname.startsWith('/share/');
 
   const [session, setSession] = useState<AuthSession | null>(contextSession);
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
@@ -106,29 +112,41 @@ export default function App() {
       case 'login':
         return <Login onLogin={handleLogin} />;
       case 'dashboard':
-        return <Dashboard onNavigate={navigateTo} />;
+        return <Dashboard onNavigate={navigateTo} session={session ?? undefined} />;
       case 'wallet':
         return <DigitalWallet onNavigate={navigateTo} />;
       case 'documents':
-        return <DocumentsScreen onNavigate={navigateTo} />;
+        return <DocumentsScreen onNavigate={navigateTo} session={session ?? undefined} />;
       case 'requests':
         return <RequestsScreen onNavigate={navigateTo} />;
       case 'notifications':
         return <NotificationsScreen onNavigate={navigateTo} />;
       case 'history':
-        return <HistoryScreen onNavigate={navigateTo} />;
+        return <HistoryScreen onNavigate={navigateTo} session={session ?? undefined} />;
       case 'settings':
         return <SettingsScreen onNavigate={navigateTo} onLogout={handleLogout} session={session ?? undefined} />;
       case 'send-money':
-        return <SendMoneyScreen onNavigate={navigateTo} />;
+        return <SendMoneyScreen onNavigate={navigateTo} session={session ?? undefined} />;
       case 'receive-money':
         return <ReceiveMoneyScreen onNavigate={navigateTo} />;
+      case 'recharge':
+        return <RechargeScreen onNavigate={navigateTo} session={session ?? undefined} />;
       case 'plans':
         return <PlansScreen onNavigate={navigateTo} />;
       default:
-        return <Dashboard onNavigate={navigateTo} />;
+        return <Dashboard onNavigate={navigateTo} session={session ?? undefined} />;
     }
   };
+
+  // If it's a public share link, show PublicFileView directly
+  if (isPublicShareLink) {
+    return (
+      <div className="min-h-screen bg-slate-950">
+        <PublicFileView />
+        <Toaster />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950">

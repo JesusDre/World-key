@@ -48,6 +48,8 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
     const [showAddCard, setShowAddCard] = useState(false);
     const [selectedCard, setSelectedCard] = useState<string | null>(null);
     const [isFlipped, setIsFlipped] = useState(false);
+    const [cardToDelete, setCardToDelete] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
     // Form states
     const [cardNumber, setCardNumber] = useState('');
@@ -75,26 +77,35 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
 
         // Fetch cards from backend
         if (authSession?.token) {
+            setIsLoading(true);
             getCards(authSession.token)
                 .then(backendCards => {
                     const mappedCards = backendCards.map(c => ({
                         id: c.id,
                         type: getCardType(c.brand),
-                        number: c.card_number.slice(-4),
-                        holder: c.holder_name,
-                        expiry: `${c.expiration_month}/${c.expiration_year}`,
+                        number: c.cardNumber.slice(-4),
+                        holder: c.holderName,
+                        expiry: `${c.expirationMonth}/${c.expirationYear}`,
                         color: getCardColor(c.brand),
                         cvv: '***'
                     }));
                     setCards(mappedCards);
                 })
-                .catch(console.error);
+                .catch(err => {
+                    console.error('Error loading cards:', err);
+                })
+                .finally(() => {
+                    setIsLoading(false);
+                });
+        } else {
+            setIsLoading(false);
         }
     }, [authSession]);
 
     const handleAddCard = async () => {
-        if (!cardNumber || !cardHolder || !cardExpiry || !cardCvv) {
-            toast.error('Por favor completa todos los campos');
+        const rawCardNumber = cardNumber.replace(/\s/g, '');
+        if (!rawCardNumber || rawCardNumber.length !== 16 || !cardHolder || !cardExpiry || !cardCvv) {
+            toast.error('Por favor completa todos los campos correctamente');
             return;
         }
 
@@ -117,14 +128,15 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
                         const tokenId = response.data.id;
                         if (!authSession?.token) throw new Error("No auth token");
 
+                        console.log("Sending to backend:", { tokenId, deviceSessionId });
                         const newBackendCard = await apiAddCard(authSession.token, tokenId, deviceSessionId);
 
                         const newCard: PaymentMethod = {
                             id: newBackendCard.id,
                             type: getCardType(newBackendCard.brand),
-                            number: newBackendCard.card_number.slice(-4),
-                            holder: newBackendCard.holder_name,
-                            expiry: `${newBackendCard.expiration_month}/${newBackendCard.expiration_year}`,
+                            number: newBackendCard.cardNumber.slice(-4),
+                            holder: newBackendCard.holderName,
+                            expiry: `${newBackendCard.expirationMonth}/${newBackendCard.expirationYear}`,
                             color: getCardColor(newBackendCard.brand),
                             cvv: '***'
                         };
@@ -133,9 +145,11 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
                         toast.success('Tarjeta guardada exitosamente');
                         setShowAddCard(false);
                         resetForm();
-                    } catch (err) {
-                        console.error(err);
-                        toast.error('Error al guardar la tarjeta en el servidor');
+                    } catch (err: any) {
+                        console.error("Backend error:", err);
+                        const status = err.response?.status;
+                        const message = err.response?.data?.message || err.message || 'Desconocido';
+                        toast.error(`Error ${status || ''}: ${message}`);
                     } finally {
                         setProcessing(false);
                     }
@@ -222,99 +236,109 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
                             exit={{ opacity: 0, x: 20 }}
                             className="space-y-6 relative perspective-1000"
                         >
-                            {cards.map((card, index) => (
-                                <motion.div
-                                    key={card.id}
-                                    layoutId={card.id}
-                                    onClick={() => {
-                                        if (selectedCard === card.id) {
-                                            setIsFlipped(!isFlipped);
-                                        } else {
-                                            setSelectedCard(card.id);
-                                            setIsFlipped(false);
-                                        }
-                                    }}
-                                    initial={{ y: index * 50, scale: 1 - index * 0.05, zIndex: cards.length - index }}
-                                    animate={{
-                                        y: selectedCard === card.id ? 0 : index * 50,
-                                        scale: selectedCard === card.id ? 1 : (selectedCard ? 0.95 : 1 - index * 0.05),
-                                        zIndex: selectedCard === card.id ? 100 : cards.length - index,
-                                        rotateX: selectedCard === card.id ? 0 : 5,
-                                        rotateY: isFlipped && selectedCard === card.id ? 180 : 0
-                                    }}
-                                    className={`relative w-full aspect-[1.58/1] cursor-pointer transition-all duration-500`}
-                                    style={{ transformStyle: 'preserve-3d' }}
-                                >
-                                    {/* Front Face */}
-                                    <div
-                                        className={`absolute inset-0 w-full h-full rounded-2xl bg-gradient-to-br ${card.color} p-6 sm:p-8 shadow-2xl border border-white/10 flex flex-col justify-between`}
-                                        style={{ backfaceVisibility: 'hidden' }}
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div className="w-12 h-8 sm:w-14 sm:h-9 bg-yellow-400/80 rounded-md flex items-center justify-center shadow-inner">
-                                                <div className="w-8 h-5 sm:w-10 sm:h-6 border border-yellow-600/50 rounded-sm" />
-                                            </div>
-                                            <span className="text-lg sm:text-2xl font-bold italic opacity-80 tracking-wider">{card.type.toUpperCase()}</span>
-                                        </div>
-
-                                        <div>
-                                            <p className="text-xl sm:text-3xl tracking-widest font-mono mb-4 sm:mb-6 text-shadow-sm truncate">•••• •••• •••• {card.number}</p>
-                                            <div className="flex justify-between items-end">
-                                                <div>
-                                                    <p className="text-[10px] sm:text-xs opacity-70 uppercase tracking-wider mb-1">Titular</p>
-                                                    <p className="font-medium tracking-wide text-sm sm:text-lg truncate max-w-[120px] sm:max-w-[200px]">{card.holder}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-[10px] sm:text-xs opacity-70 uppercase tracking-wider mb-1">Expira</p>
-                                                    <p className="font-medium text-sm sm:text-lg">{card.expiry}</p>
-                                                </div>
-                                            </div>
+                            {isLoading ? (
+                                <div className="text-center py-20">
+                                    <div className="relative w-32 h-32 mx-auto mb-6">
+                                        <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse" />
+                                        <div className="relative w-full h-full bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center">
+                                            <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                                         </div>
                                     </div>
-
-                                    {/* Back Face */}
-                                    <div
-                                        className={`absolute inset-0 w-full h-full rounded-2xl bg-gradient-to-br ${card.color} shadow-2xl border border-white/10`}
-                                        style={{
-                                            backfaceVisibility: 'hidden',
-                                            transform: 'rotateY(180deg)'
+                                    <h3 className="text-xl font-bold text-white mb-2">Cargando tarjetas...</h3>
+                                    <p className="text-slate-400">Un momento por favor</p>
+                                </div>
+                            ) : cards.length > 0 ? (
+                                cards.map((card, index) => (
+                                    <motion.div
+                                        key={card.id}
+                                        layoutId={card.id}
+                                        onClick={() => {
+                                            if (selectedCard === card.id) {
+                                                setIsFlipped(!isFlipped);
+                                            } else {
+                                                setSelectedCard(card.id);
+                                                setIsFlipped(false);
+                                            }
                                         }}
+                                        initial={{ y: index * 20, scale: 1 - index * 0.03, zIndex: cards.length - index }}
+                                        animate={{
+                                            y: selectedCard === card.id ? 0 : index * 20,
+                                            scale: selectedCard === card.id ? 1 : (selectedCard ? 0.92 : 1 - index * 0.03),
+                                            zIndex: selectedCard === card.id ? 100 : cards.length - index,
+                                            rotateX: selectedCard === card.id ? 0 : 3,
+                                            rotateY: isFlipped && selectedCard === card.id ? 180 : 0
+                                        }}
+                                        className={`relative w-full aspect-[1.58/1] cursor-pointer transition-all duration-500`}
+                                        style={{ transformStyle: 'preserve-3d' }}
                                     >
-                                        <div className="w-full h-12 bg-black/80 mt-6" />
-                                        <div className="px-8 mt-6">
-                                            <div className="flex justify-end items-center gap-4">
-                                                <p className="text-xs uppercase opacity-70">CVV</p>
-                                                <div className="bg-white text-black font-mono px-3 py-1 rounded text-sm font-bold">
-                                                    {card.cvv || '123'}
+                                        {/* Front Face */}
+                                        <div
+                                            className={`absolute inset-0 w-full h-full rounded-2xl bg-gradient-to-br ${card.color} p-6 sm:p-8 shadow-2xl border border-white/10 flex flex-col justify-between`}
+                                            style={{ backfaceVisibility: 'hidden' }}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div className="w-12 h-8 sm:w-14 sm:h-9 bg-yellow-400/80 rounded-md flex items-center justify-center shadow-inner">
+                                                    <div className="w-8 h-5 sm:w-10 sm:h-6 border border-yellow-600/50 rounded-sm" />
+                                                </div>
+                                                <span className="text-lg sm:text-2xl font-bold italic opacity-80 tracking-wider">{card.type.toUpperCase()}</span>
+                                            </div>
+
+                                            <div>
+                                                <p className="text-xl sm:text-3xl tracking-widest font-mono mb-4 sm:mb-6 text-shadow-sm truncate">•••• •••• •••• {card.number}</p>
+                                                <div className="flex justify-between items-end">
+                                                    <div>
+                                                        <p className="text-[10px] sm:text-xs opacity-70 uppercase tracking-wider mb-1">Titular</p>
+                                                        <p className="font-medium tracking-wide text-sm sm:text-lg truncate max-w-[120px] sm:max-w-[200px]">{card.holder}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[10px] sm:text-xs opacity-70 uppercase tracking-wider mb-1">Expira</p>
+                                                        <p className="font-medium text-sm sm:text-lg">{card.expiry}</p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="mt-4 h-8 bg-white/20 rounded w-3/4" />
-                                            <p className="text-[10px] mt-4 opacity-60 text-justify leading-tight">
-                                                Esta tarjeta es intransferible y su uso está sujeto a los términos y condiciones del contrato.
-                                                Si encuentra esta tarjeta, por favor devuélvala a la sucursal más cercana.
-                                            </p>
                                         </div>
-                                    </div>
 
-                                    {/* Delete Button (Only visible when selected and NOT flipped) */}
-                                    {selectedCard === card.id && !isFlipped && (
-                                        <motion.button
-                                            initial={{ opacity: 0, scale: 0.8 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            className="absolute -top-3 -right-3 p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors z-50"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setCards(cards.filter(c => c.id !== card.id));
-                                                toast.success('Tarjeta eliminada');
+                                        {/* Back Face */}
+                                        <div
+                                            className={`absolute inset-0 w-full h-full rounded-2xl bg-gradient-to-br ${card.color} shadow-2xl border border-white/10`}
+                                            style={{
+                                                backfaceVisibility: 'hidden',
+                                                transform: 'rotateY(180deg)'
                                             }}
                                         >
-                                            <Trash2 className="w-4 h-4" />
-                                        </motion.button>
-                                    )}
-                                </motion.div>
-                            ))}
+                                            <div className="w-full h-12 bg-black/80 mt-6" />
+                                            <div className="px-8 mt-6">
+                                                <div className="flex justify-end items-center gap-4">
+                                                    <p className="text-xs uppercase opacity-70">CVV</p>
+                                                    <div className="bg-white text-black font-mono px-3 py-1 rounded text-sm font-bold">
+                                                        {card.cvv || '123'}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-4 h-8 bg-white/20 rounded w-3/4" />
+                                                <p className="text-[10px] mt-4 opacity-60 text-justify leading-tight">
+                                                    Esta tarjeta es intransferible y su uso está sujeto a los términos y condiciones del contrato.
+                                                    Si encuentra esta tarjeta, por favor devuélvala a la sucursal más cercana.
+                                                </p>
+                                            </div>
+                                        </div>
 
-                            {cards.length === 0 && (
+                                        {/* Delete Button (Only visible when selected and NOT flipped) */}
+                                        {selectedCard === card.id && !isFlipped && (
+                                            <motion.button
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                className="absolute -top-3 -right-3 p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors z-50"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCardToDelete(card.id);
+                                                }}
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </motion.button>
+                                        )}
+                                    </motion.div>
+                                ))
+                            ) : (
                                 <div className="text-center py-20">
                                     <div className="relative w-32 h-32 mx-auto mb-6">
                                         <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse" />
@@ -392,7 +416,12 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
                                     name="card-number"
                                     autoComplete="cc-number"
                                     value={cardNumber}
-                                    onChange={(e) => setCardNumber(e.target.value)}
+                                    onChange={(e) => {
+                                        const value = e.target.value.replace(/\D/g, '').slice(0, 16);
+                                        const formatted = value.replace(/(\d{4})(?=\d)/g, '$1 ');
+                                        setCardNumber(formatted);
+                                    }}
+                                    maxLength={19}
                                     placeholder="0000 0000 0000 0000"
                                     className="bg-slate-800 border-slate-700 text-white pl-10"
                                 />
@@ -457,6 +486,48 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
                         <p className="text-xs text-center text-slate-500 mt-2">
                             Procesado de forma segura por OpenPay
                         </p>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={cardToDelete !== null} onOpenChange={(open) => !open && setCardToDelete(null)}>
+                <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-sm z-[200]">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold text-center">¿Eliminar tarjeta?</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <p className="text-center text-slate-400">
+                            Esta acción no se puede deshacer. La tarjeta será eliminada permanentemente de tu cartera.
+                        </p>
+                        <div className="flex gap-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => setCardToDelete(null)}
+                                className="flex-1 border-slate-700 text-white hover:bg-slate-800"
+                            >
+                                Cancelar
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    if (!cardToDelete || !authSession?.token) return;
+
+                                    try {
+                                        await apiDeleteCard(authSession.token, cardToDelete);
+                                        setCards(cards.filter(c => c.id !== cardToDelete));
+                                        setSelectedCard(null);
+                                        setCardToDelete(null);
+                                        toast.success('Tarjeta eliminada exitosamente');
+                                    } catch (error) {
+                                        console.error('Error deleting card:', error);
+                                        toast.error('Error al eliminar la tarjeta');
+                                    }
+                                }}
+                                className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                            >
+                                Eliminar
+                            </Button>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

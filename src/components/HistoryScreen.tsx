@@ -1,266 +1,180 @@
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight, Eye, Filter, FileText, Search, Send, Shield } from "lucide-react";
-import { toast } from "sonner";
-import type { Screen } from "../App";
-import { useSoroban } from "@/hooks/useSoroban";
-import type { HistoryRecord } from "@/utils/stellar";
-import { Badge } from "./ui/badge";
-import { Card } from "./ui/card";
-import { Input } from "./ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-
-type HistoryCategory = "document" | "verification" | "access" | "identity";
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Download, Send, CreditCard, Search } from 'lucide-react';
+import type { Screen } from '../App';
+import type { AuthSession } from '../types/auth';
+import { Card } from './ui/card';
+import { Input } from './ui/input';
+import { apiRequest } from '../services/api';
 
 interface HistoryScreenProps {
   onNavigate: (screen: Screen) => void;
+  session?: AuthSession;
 }
 
-interface DisplayHistoryItem {
-  id: string;
-  category: HistoryCategory;
-  title: string;
+interface Transaction {
+  id: number;
+  type: 'RECHARGE' | 'TRANSFER';
+  amount: number;
   description: string;
-  timestamp: string;
-  status?: "pending" | "completed" | "denied";
-  hash?: string;
-  actor?: string;
+  fromUserEmail?: string;
+  toUserEmail?: string;
+  createdAt: string;
+  status: string;
 }
 
-export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
-  const { history } = useSoroban();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedItem, setSelectedItem] = useState<DisplayHistoryItem | null>(null);
-  const [showDetail, setShowDetail] = useState(false);
-  const [activeTab, setActiveTab] = useState<"all" | "documents" | "access">("all");
+export function HistoryScreen({ onNavigate, session }: HistoryScreenProps) {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const mappedHistory: DisplayHistoryItem[] = useMemo(() => history.map(formatHistoryItem), [history]);
-
-  const filteredHistory = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return mappedHistory;
-    return mappedHistory.filter((item) => item.title.toLowerCase().includes(query) || item.description.toLowerCase().includes(query));
-  }, [mappedHistory, searchQuery]);
-
-  const documentsHistory = filteredHistory.filter((item) => item.category === "document" || item.category === "verification");
-  const accessHistory = filteredHistory.filter((item) => item.category === "access");
-
-  const getIcon = (category: HistoryCategory) => {
-    switch (category) {
-      case "document":
-        return <FileText className="w-5 h-5 text-blue-400" />;
-      case "verification":
-        return <Shield className="w-5 h-5 text-emerald-400" />;
-      case "access":
-        return <Eye className="w-5 h-5 text-purple-400" />;
-      case "identity":
-      default:
-        return <Send className="w-5 h-5 text-slate-400" />;
+  useEffect(() => {
+    if (session?.token) {
+      apiRequest('/wallet/transactions', {
+        method: 'GET',
+        token: session.token
+      })
+        .then((data: any) => {
+          setTransactions(data);
+        })
+        .catch(err => console.error('Error loading transactions:', err))
+        .finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
     }
-  };
+  }, [session]);
 
-  const getBackgroundColor = (category: HistoryCategory) => {
-    switch (category) {
-      case "document":
-        return "bg-blue-500/10";
-      case "verification":
-        return "bg-emerald-500/10";
-      case "access":
-        return "bg-purple-500/10";
-      case "identity":
-      default:
-        return "bg-slate-500/10";
-    }
-  };
+  const filteredTransactions = transactions.filter(tx =>
+    tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    tx.fromUserEmail?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    tx.toUserEmail?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const openExplorer = (hash?: string) => {
-    if (!hash) {
-      toast.error("Hash no disponible");
-      return;
-    }
-    window.open(`https://horizon-futurenet.stellar.org/transactions/${hash}`, "_blank", "noopener,noreferrer");
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `Hace ${diffMins}m`;
+    if (diffHours < 24) return `Hace ${diffHours}h`;
+    if (diffDays === 1) return 'Ayer';
+    return `Hace ${diffDays}d`;
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-8">
+    <div className="min-h-screen bg-slate-950 text-white pb-24">
+      {/* Header */}
       <div className="bg-gradient-to-br from-slate-900 to-slate-900/40 px-6 pt-12 pb-6 border-b border-slate-800">
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => onNavigate("dashboard")} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
+          <button
+            onClick={() => onNavigate('dashboard')}
+            className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+          >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-2xl">Historial</h1>
+          <h1 className="text-2xl font-bold">Historial de Transacciones</h1>
         </div>
 
+        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <Input
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Buscar eventos…"
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar transacciones..."
             className="pl-10 h-12 bg-slate-900 border-slate-800 text-white"
           />
         </div>
       </div>
 
-      <div className="px-6 py-6 space-y-6">
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-slate-900 mb-6">
-            <TabsTrigger value="all" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">
-              Todo
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">
-              Documentos
-            </TabsTrigger>
-            <TabsTrigger value="access" className="text-slate-300 data-[state=active]:text-slate-900 data-[state=active]:bg-white">
-              Accesos
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="all">
-            <HistoryList items={filteredHistory} getIcon={getIcon} getBackgroundColor={getBackgroundColor} onSelect={setSelectedItem} setShowDetail={setShowDetail} />
-          </TabsContent>
-
-          <TabsContent value="documents">
-            <HistoryList items={documentsHistory} getIcon={getIcon} getBackgroundColor={getBackgroundColor} onSelect={setSelectedItem} setShowDetail={setShowDetail} />
-          </TabsContent>
-
-          <TabsContent value="access">
-            <HistoryList items={accessHistory} getIcon={getIcon} getBackgroundColor={getBackgroundColor} onSelect={setSelectedItem} setShowDetail={setShowDetail} />
-          </TabsContent>
-        </Tabs>
-
-        <Card className="p-4 bg-slate-900/40 border-slate-800">
-          <div className="flex items-center gap-3">
-            <Filter className="w-5 h-5 text-slate-400" />
-            <div>
-              <p className="text-sm text-white">Cada evento es on-chain</p>
-              <p className="text-xs text-slate-400">
-                Los contratos Soroban generan este historial. Usa tu hash para rastrear verificaciones y permisos.
-              </p>
-            </div>
+      {/* Transactions List */}
+      <div className="px-6 py-6">
+        {isLoading ? (
+          // Skeleton loader
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Card key={i} className="p-4 bg-slate-900 border-slate-800 animate-pulse">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-slate-800 rounded-full"></div>
+                    <div className="space-y-2">
+                      <div className="h-4 w-40 bg-slate-800 rounded"></div>
+                      <div className="h-3 w-24 bg-slate-800 rounded"></div>
+                    </div>
+                  </div>
+                  <div className="h-5 w-20 bg-slate-800 rounded"></div>
+                </div>
+              </Card>
+            ))}
           </div>
-        </Card>
-      </div>
-
-      <Dialog open={showDetail} onOpenChange={setShowDetail}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>Detalle del evento</DialogTitle>
-          </DialogHeader>
-
-          {selectedItem && (
-            <div className="space-y-4 mt-3">
-              <Card className="p-4 bg-slate-800 border-slate-700">
-                <h3 className="text-sm text-white">{selectedItem.title}</h3>
-                <p className="text-xs text-slate-400 mt-1">{selectedItem.description}</p>
-              </Card>
-
-              <Card className="p-3 bg-slate-800 border-slate-700 text-xs text-slate-400 space-y-2">
-                <div className="flex justify-between">
-                  <span>Fecha</span>
-                  <span>{new Date(selectedItem.timestamp).toLocaleString("es-MX")}</span>
-                </div>
-                {selectedItem.actor && (
-                  <div className="flex justify-between">
-                    <span>Actor</span>
-                    <span className="font-mono text-slate-300 truncate">{selectedItem.actor}</span>
-                  </div>
-                )}
-                {selectedItem.hash && (
-                  <div className="flex justify-between items-center">
-                    <span>Hash</span>
-                    <button
-                      onClick={() => openExplorer(selectedItem.hash)}
-                      className="font-mono text-blue-400 hover:text-blue-300 transition-colors truncate text-right"
-                    >
-                      {selectedItem.hash}
-                    </button>
-                  </div>
-                )}
-              </Card>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function HistoryList({
-  items,
-  getIcon,
-  getBackgroundColor,
-  onSelect,
-  setShowDetail,
-}: {
-  items: DisplayHistoryItem[];
-  getIcon: (category: HistoryCategory) => JSX.Element;
-  getBackgroundColor: (category: HistoryCategory) => string;
-  onSelect: (item: DisplayHistoryItem) => void;
-  setShowDetail: (open: boolean) => void;
-}) {
-  if (items.length === 0) {
-    return (
-      <Card className="p-6 bg-slate-900 border-slate-800 text-center text-sm text-slate-400">
-        No hay eventos registrados todavía.
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {items.map((item, index) => (
-        <motion.div key={item.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
-          <Card
-            onClick={() => {
-              onSelect(item);
-              setShowDetail(true);
-            }}
-            className="p-4 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getBackgroundColor(item.category)}`}>{getIcon(item.category)}</div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">{item.title}</p>
-                    <p className="text-xs text-slate-400 truncate">{item.description}</p>
-                  </div>
-                  {item.status && (
-                    <Badge
-                      className={
-                        item.status === "completed"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                          : item.status === "pending"
-                          ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
-                          : "bg-red-500/10 text-red-400 border-red-500/30"
-                      }
-                    >
-                      {item.status === "completed" ? "Completado" : item.status === "pending" ? "Pendiente" : "Denegado"}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 mt-1">{new Date(item.timestamp).toLocaleString("es-MX")}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-600" />
-            </div>
+        ) : filteredTransactions.length === 0 ? (
+          <Card className="p-8 bg-slate-900 border-slate-800 text-center">
+            <p className="text-slate-400">
+              {searchQuery ? 'No se encontraron transacciones' : 'No hay transacciones todavía'}
+            </p>
           </Card>
-        </motion.div>
-      ))}
+        ) : (
+          <div className="space-y-3">
+            {filteredTransactions.map((tx, index) => {
+              const isTransfer = tx.type === 'TRANSFER';
+              const isRecharge = tx.type === 'RECHARGE';
+              const isReceived = isTransfer && tx.toUserEmail === session?.email;
+              const isSent = isTransfer && tx.fromUserEmail === session?.email;
+
+              return (
+                <motion.div
+                  key={tx.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <Card className="p-4 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isSent ? 'bg-red-500/10' :
+                            isReceived ? 'bg-emerald-500/10' :
+                              'bg-blue-500/10'
+                          }`}>
+                          {isSent ? (
+                            <Send className="w-6 h-6 text-red-400" />
+                          ) : isReceived ? (
+                            <Download className="w-6 h-6 text-emerald-400" />
+                          ) : (
+                            <CreditCard className="w-6 h-6 text-blue-400" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm text-white font-medium">{tx.description}</p>
+                          <p className="text-xs text-slate-400">
+                            {isTransfer && (
+                              <>
+                                {isSent && `Para: ${tx.toUserEmail}`}
+                                {isReceived && `De: ${tx.fromUserEmail}`}
+                                {' • '}
+                              </>
+                            )}
+                            {formatTimeAgo(tx.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-lg font-medium ${isReceived || isRecharge ? 'text-emerald-400' : 'text-slate-300'
+                          }`}>
+                          {isReceived || isRecharge ? '+' : '-'}${tx.amount.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-slate-500 capitalize">{tx.status.toLowerCase()}</p>
+                      </div>
+                    </div>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
-}
-
-function formatHistoryItem(item: HistoryRecord): DisplayHistoryItem {
-  const category: HistoryCategory = item.type === "access" ? "access" : item.type === "identity" ? "identity" : "document";
-  return {
-    id: item.id,
-    category,
-    title: item.title,
-    description: item.description,
-    timestamp: item.timestamp,
-    hash: item.txHash,
-    actor: item.actor,
-  };
 }

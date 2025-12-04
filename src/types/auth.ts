@@ -3,4 +3,5 @@ export interface AuthSession {
   fullName: string;
   publicKey: string;
   email: string;
+  photoUrl?: string;
 }

@@ -5,16 +5,16 @@ export interface Card {
     type: string;
     brand: string;
     address: unknown;
-    card_number: string;
-    holder_name: string;
-    expiration_year: string;
-    expiration_month: string;
-    allows_charges: boolean;
-    allows_payouts: boolean;
-    creation_date: string;
-    bank_name: string;
-    customer_id: string;
-    bank_code: string;
+    cardNumber: string;
+    holderName: string;
+    expirationYear: string;
+    expirationMonth: string;
+    allowsCharges: boolean;
+    allowsPayouts: boolean;
+    creationDate: string;
+    bankName: string;
+    customerId: string;
+    bankCode: string;
 }
 
 export async function getCards(token: string): Promise<Card[]> {

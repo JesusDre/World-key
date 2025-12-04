@@ -320,6 +320,11 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
     }
   };
 
+  // Nuevo: navegar a la pantalla de planes
+  const handleViewPlans = () => {
+    onNavigate('plans');
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-8">
       {/* Header */}
@@ -603,6 +608,35 @@ export function SettingsScreen({ onNavigate, onLogout, session }: SettingsScreen
               </div>
               <ChevronRight className="w-5 h-5 text-slate-600" />
             </button>
+          </Card>
+        </div>
+
+        {/* Hazte premium (Nueva sección) */}
+        <div>
+          <h2 className="text-lg mb-4 flex items-center gap-2 text-white">
+            {/* icon existente disponible en imports */}
+            <Users className="w-5 h-5 text-yellow-300" />
+            Hazte premium
+          </h2>
+
+          <Card className="bg-slate-900 border-slate-800 divide-y divide-slate-800">
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-yellow-500/10 rounded-full flex items-center justify-center">
+                  {/* pequeño distintivo */}
+                  <svg className="w-5 h-5 text-yellow-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm text-white">Accede a planes y beneficios</p>
+                  <p className="text-xs text-slate-400">Ver y comparar planes disponibles</p>
+                </div>
+              </div>
+              <Button onClick={handleViewPlans} className="bg-blue-500 hover:bg-blue-600">
+                Ver planes
+              </Button>
+            </div>
           </Card>
         </div>
 

@@ -15,6 +15,7 @@ import { useSoroban } from './hooks/useSoroban';
 import type { AuthSession } from './types/auth';
 import { Fingerprint } from 'lucide-react';
 import { Button } from './components/ui/button';
+import PlansScreen from './screens/PlansScreen';
 
 export type Screen =
   | 'onboarding'
@@ -27,7 +28,8 @@ export type Screen =
   | 'history'
   | 'settings'
   | 'send-money'
-  | 'receive-money';
+  | 'receive-money'
+  | 'plans';
 
 function UnlockScreen({ onUnlock }: { onUnlock: () => void }) {
   return (
@@ -121,6 +123,8 @@ export default function App() {
         return <SendMoneyScreen onNavigate={navigateTo} />;
       case 'receive-money':
         return <ReceiveMoneyScreen onNavigate={navigateTo} />;
+      case 'plans':
+        return <PlansScreen onNavigate={navigateTo} />;
       default:
         return <Dashboard onNavigate={navigateTo} />;
     }

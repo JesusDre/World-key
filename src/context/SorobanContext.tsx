@@ -38,6 +38,9 @@ import {
 } from "./SorobanContext.shared";
 import type { AuthSession } from "@/types/auth";
 
+// Re-export the context for easier imports
+export { SorobanContext } from "./SorobanContext.shared";
+
 interface InternalHistoryInput {
   type: HistoryRecord["type"];
   title: string;

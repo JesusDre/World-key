@@ -10,6 +10,9 @@ interface SharedFileInfo {
     description: string;
     uploadedAt: string;
     ownerEmail: string;
+    driveViewLink?: string;
+    driveDownloadLink?: string;
+    storedInDrive?: boolean;
 }
 
 export function PublicFileView() {
@@ -44,11 +47,21 @@ export function PublicFileView() {
     };
 
     const handleDownload = () => {
-        window.open(`http://localhost:8080/api/storage/public/${shareToken}`, '_blank');
+        // Use Google Drive link if available, otherwise use backend
+        if (fileInfo?.driveDownloadLink) {
+            window.open(fileInfo.driveDownloadLink, '_blank');
+        } else {
+            window.open(`http://localhost:8080/api/storage/public/${shareToken}`, '_blank');
+        }
     };
 
     const handleView = () => {
-        window.open(`http://localhost:8080/api/storage/public/${shareToken}`, '_blank');
+        // Use Google Drive link if available, otherwise use backend
+        if (fileInfo?.driveViewLink) {
+            window.open(fileInfo.driveViewLink, '_blank');
+        } else {
+            window.open(`http://localhost:8080/api/storage/public/${shareToken}`, '_blank');
+        }
     };
 
     const formatFileSize = (bytes: number) => {
@@ -127,7 +140,7 @@ export function PublicFileView() {
                         </div>
 
                         {/* Preview for images */}
-                        {isImage && (
+                        {isImage && !fileInfo.storedInDrive && (
                             <div className="mt-6 rounded-lg overflow-hidden bg-slate-950 p-4">
                                 <img
                                     src={`http://localhost:8080/api/storage/public/${shareToken}`}
@@ -137,8 +150,25 @@ export function PublicFileView() {
                             </div>
                         )}
 
-                        {/* Preview for PDFs */}
-                        {isPDF && (
+                        {/* Show Drive preview for Drive files */}
+                        {fileInfo.storedInDrive && fileInfo.driveViewLink && (
+                            <div className="mt-6">
+                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-4">
+                                    <p className="text-blue-400 text-sm text-center">
+                                        Este archivo está almacenado en Google Drive
+                                    </p>
+                                </div>
+                                <Button
+                                    onClick={handleView}
+                                    className="w-full bg-blue-500 hover:bg-blue-600"
+                                >
+                                    Ver en Google Drive
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* Preview for PDFs (local storage only) */}
+                        {isPDF && !fileInfo.storedInDrive && (
                             <div className="mt-6">
                                 <Button
                                     onClick={handleView}

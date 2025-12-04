@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { SorobanContext } from "@/context/SorobanContext.shared";
+import { SorobanContext } from "@/context/SorobanContext";
 
 export function useSoroban() {
   const ctx = useContext(SorobanContext);

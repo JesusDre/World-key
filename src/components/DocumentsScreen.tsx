@@ -52,6 +52,9 @@ interface UserFile {
   shareToken: string | null;
   uploadedAt: string;
   isTokenized: boolean;
+  driveFileId?: string;
+  driveViewLink?: string;
+  driveDownloadLink?: string;
 }
 
 interface DocumentGroup {
@@ -449,6 +452,13 @@ export function DocumentsScreen({ onNavigate, session }: DocumentsScreenProps) {
     if (!session?.token) return;
 
     try {
+      // If file is in Google Drive, use Drive download link
+      if (file.driveDownloadLink) {
+        window.open(file.driveDownloadLink, '_blank');
+        return;
+      }
+
+      // Otherwise download from backend
       const response = await fetch(`http://localhost:8080/api/storage/download/${file.id}`, {
         headers: {
           Authorization: `Bearer ${session.token}`,
@@ -987,18 +997,23 @@ export function DocumentsScreen({ onNavigate, session }: DocumentsScreenProps) {
                 <Label className="text-sm text-white">Descarga Directa</Label>
               </div>
               <p className="text-xs text-slate-400 mb-3">
-                Link directo para descargar el archivo sin vista previa
+                {selectedFile?.driveDownloadLink 
+                  ? 'Link directo de Google Drive para descargar el archivo'
+                  : 'Link directo para descargar el archivo sin vista previa'}
               </p>
               <div className="flex gap-2">
                 <Input
-                  value={selectedFile?.shareToken ? `http://localhost:8080/api/storage/public/${selectedFile.shareToken}` : ''}
+                  value={selectedFile?.shareToken 
+                    ? (selectedFile.driveDownloadLink || `http://localhost:8080/api/storage/public/${selectedFile.shareToken}`)
+                    : ''}
                   readOnly
                   className="bg-slate-900 border-slate-700 text-white font-mono text-xs"
                 />
                 <Button
                   onClick={() => {
                     if (selectedFile?.shareToken) {
-                      navigator.clipboard.writeText(`http://localhost:8080/api/storage/public/${selectedFile.shareToken}`);
+                      const link = selectedFile.driveDownloadLink || `http://localhost:8080/api/storage/public/${selectedFile.shareToken}`;
+                      navigator.clipboard.writeText(link);
                       toast.success('Link copiado');
                     }
                   }}
@@ -1008,6 +1023,16 @@ export function DocumentsScreen({ onNavigate, session }: DocumentsScreenProps) {
                   <Copy className="w-4 h-4" />
                 </Button>
               </div>
+              
+              {/* Google Drive Indicator */}
+              {selectedFile?.driveFileId && (
+                <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded flex items-center gap-2">
+                  <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12.01 1.485c-.237 0-.474.066-.681.197L2.835 7.166a1.365 1.365 0 0 0-.685 1.182v7.304c0 .486.258.935.685 1.182l8.495 5.484c.413.262.948.262 1.361 0l8.495-5.484a1.365 1.365 0 0 0 .685-1.182V8.348c0-.486-.258-.935-.685-1.182l-8.495-5.484a1.362 1.362 0 0 0-.68-.197zm.84 3.737l5.685 3.513-2.528 1.488-5.685-3.513 2.528-1.488zm-2.656.794l5.685 3.513-5.685 3.513-5.685-3.513 5.685-3.513zm6.497 4.71l2.528 1.488v5.297l-5.685 3.513v-2.976l3.157-1.855v-5.467z"/>
+                  </svg>
+                  <span className="text-xs text-blue-400">Almacenado en Google Drive</span>
+                </div>
+              )}
             </Card>
 
             <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs text-blue-300 flex items-start gap-2">

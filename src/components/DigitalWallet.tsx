@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, CreditCard, Trash2, Shield, Wallet, FileText, X } from 'lucide-react';
+import { ArrowLeft, Plus, CreditCard, Trash2, Wallet, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
@@ -28,22 +28,11 @@ interface PaymentMethod {
     cvv?: string;
 }
 
-interface IdentityDocument {
-    id: string;
-    type: 'INE' | 'License' | 'Passport';
-    number: string;
-    holder: string;
-    image?: string;
-}
+
 
 export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
     const { authSession } = useSoroban();
-    const [activeTab, setActiveTab] = useState<'cards' | 'docs'>('cards');
     const [cards, setCards] = useState<PaymentMethod[]>([]);
-    const [docs, setDocs] = useState<IdentityDocument[]>([
-        { id: '1', type: 'INE', number: '1234567890', holder: 'JUAN PEREZ' },
-        { id: '2', type: 'License', number: 'A1234567', holder: 'JUAN PEREZ' }
-    ]);
 
     const [showAddCard, setShowAddCard] = useState(false);
     const [selectedCard, setSelectedCard] = useState<string | null>(null);
@@ -209,33 +198,18 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
                 </Button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex p-4 gap-4 justify-center">
-                <button
-                    onClick={() => setActiveTab('cards')}
-                    className={`px-6 py-2 rounded-full transition-all ${activeTab === 'cards' ? 'bg-white text-slate-900 font-bold' : 'bg-slate-800 text-slate-400'}`}
-                >
-                    Tarjetas
-                </button>
-                <button
-                    onClick={() => setActiveTab('docs')}
-                    className={`px-6 py-2 rounded-full transition-all ${activeTab === 'docs' ? 'bg-white text-slate-900 font-bold' : 'bg-slate-800 text-slate-400'}`}
-                >
-                    Identidad
-                </button>
-            </div>
+
 
             {/* Content */}
             <div className="px-4 py-8 max-w-md mx-auto min-h-[600px]">
                 <AnimatePresence mode="wait">
-                    {activeTab === 'cards' ? (
-                        <motion.div
-                            key="cards"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="space-y-6 relative perspective-1000"
-                        >
+                    <motion.div
+                        key="cards"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="space-y-6 relative perspective-1000"
+                    >
                             {isLoading ? (
                                 <div className="text-center py-20">
                                     <div className="relative w-32 h-32 mx-auto mb-6">
@@ -360,45 +334,6 @@ export function DigitalWallet({ onNavigate }: DigitalWalletProps) {
                                 </div>
                             )}
                         </motion.div>
-                    ) : (
-                        // ... docs section
-                        <motion.div
-                            key="docs"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            className="space-y-4"
-                        >
-                            {docs.map((doc) => (
-                                <div key={doc.id} className="relative group">
-                                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity" />
-                                    <div className="relative bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 flex gap-4 sm:gap-6 items-center hover:border-slate-600 transition-colors cursor-pointer">
-                                        <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-800 rounded-xl flex items-center justify-center flex-shrink-0">
-                                            <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-slate-400" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="font-bold text-lg sm:text-xl mb-1 truncate">{doc.type}</h3>
-                                            <p className="text-slate-400 text-sm sm:text-base mb-2 truncate">{doc.number}</p>
-                                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] sm:text-xs font-medium border border-emerald-500/20">
-                                                <Shield className="w-3 h-3" /> Verificado
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-
-                            <div
-                                onClick={() => toast.info("Próximamente: Subir documentos")}
-                                className="border-2 border-dashed border-slate-800 rounded-2xl p-8 sm:p-12 text-center hover:border-slate-600 hover:bg-slate-900/50 transition-all cursor-pointer group"
-                            >
-                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-slate-800 transition-colors">
-                                    <Plus className="w-6 h-6 sm:w-8 sm:h-8 text-slate-500 group-hover:text-slate-300" />
-                                </div>
-                                <h3 className="text-base sm:text-lg font-medium text-slate-300 mb-1">Agregar Documento</h3>
-                                <p className="text-slate-500 text-xs sm:text-sm">Sube tu INE, Licencia o Pasaporte</p>
-                            </div>
-                        </motion.div>
-                    )}
                 </AnimatePresence>
             </div>
 

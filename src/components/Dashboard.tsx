@@ -162,8 +162,17 @@ export function Dashboard({ onNavigate, session }: DashboardProps) {
         {/* Balance */}
         <div className="text-center">
           <p className="text-sm text-slate-400 mb-2">Saldo</p>
-          <h2 className="text-5xl mb-1">${balance.toFixed(2)}</h2>
-          <p className="text-emerald-400 text-sm mb-4">MXN</p>
+          {isLoading ? (
+            <div className="animate-pulse">
+              <div className="h-12 w-48 bg-slate-700/50 rounded-lg mx-auto mb-2"></div>
+              <div className="h-4 w-12 bg-slate-700/50 rounded mx-auto mb-4"></div>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-5xl mb-1">${balance.toFixed(2)}</h2>
+              <p className="text-emerald-400 text-sm mb-4">MXN</p>
+            </>
+          )}
           <button
             onClick={() => onNavigate('recharge')}
             className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 rounded-full text-sm font-medium transition-all"
@@ -236,24 +245,48 @@ export function Dashboard({ onNavigate, session }: DashboardProps) {
           </div>
 
           <div className="flex gap-4 overflow-x-auto pb-2 -mx-6 px-6">
-            {paymentMethods.map((method) => (
-              <motion.div
-                key={method.id}
-                whileHover={{ scale: 1.02 }}
-                className="min-w-[280px] bg-gradient-to-br from-blue-900/40 to-slate-900/60 p-6 rounded-2xl border border-slate-700"
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <CreditCard className="w-8 h-8 text-emerald-400" />
-                  {method.verified && (
-                    <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 bg-emerald-500/10">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Verificada
-                    </Badge>
-                  )}
+            {isLoading ? (
+              // Skeleton loader para tarjetas
+              [1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="min-w-[200px] bg-gradient-to-br from-blue-900/40 to-slate-900/60 p-6 rounded-2xl border border-slate-700 animate-pulse"
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="w-8 h-8 bg-slate-700/50 rounded"></div>
+                    <div className="w-20 h-5 bg-slate-700/50 rounded-full"></div>
+                  </div>
+                  <div className="h-4 w-32 bg-slate-700/50 rounded"></div>
                 </div>
-                <p className="text-sm text-slate-400 mb-1">{method.type} •••• {method.last4}</p>
-              </motion.div>
-            ))}
+              ))
+            ) : paymentMethods.length === 0 ? (
+              <div
+                onClick={() => onNavigate('wallet')}
+                className="min-w-[200px] bg-gradient-to-br from-slate-800/40 to-slate-900/60 p-6 rounded-2xl border border-dashed border-slate-600 cursor-pointer hover:border-emerald-500/50 transition-all flex flex-col items-center justify-center gap-2"
+              >
+                <CreditCard className="w-8 h-8 text-slate-500" />
+                <p className="text-sm text-slate-400">Agregar tarjeta</p>
+              </div>
+            ) : (
+              paymentMethods.map((method) => (
+                <motion.div
+                  key={method.id}
+                  whileHover={{ scale: 1.02 }}
+                  className="min-w-[200px] bg-gradient-to-br from-blue-900/40 to-slate-900/60 p-6 rounded-2xl border border-slate-700"
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <CreditCard className="w-8 h-8 text-emerald-400" />
+                    {method.verified && (
+                      <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 bg-emerald-500/10">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Verificada
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-slate-400 mb-1">{method.type} •••• {method.last4}</p>
+                </motion.div>
+              ))
+            )}
           </div>
         </div>
 
